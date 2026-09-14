@@ -1,0 +1,69 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: workerapplications.apps.kubiad.dev
+spec:
+  group: apps.kubiad.dev
+  names:
+    kind: WorkerApplication
+    listKind: WorkerApplicationList
+    plural: workerapplications
+    shortNames:
+      - workerapp
+    singular: workerapplication
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.phase
+          name: Phase
+          type: string
+        - jsonPath: .status.readyReplicas
+          name: Ready
+          type: integer
+        - jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: WorkerApplication is the Schema for the workerapplications API
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: WorkerApplicationSpec defines the desired state of WorkerApplication
+              properties:
+                image:
+                  description: Image is the container image for the worker
+                  minLength: 1
+                  type: string
+                replicas:
+                  default: 1
+                  description: Replicas is the desired number of worker replicas
+                  format: int32
+                  maximum: 10
+                  minimum: 0
+                  type: integer
+              required:
+                - image
+              type: object
+            status:
+              description: WorkerApplicationStatus defines the observed state of WorkerApplication
+              properties:
+                phase:
+                  description: Phase is Ready when the Deployment has reached its desired state
+                  type: string
+                readyReplicas:
+                  description: ReadyReplicas is the observed number of ready Deployment replicas
+                  format: int32
+                  type: integer
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
