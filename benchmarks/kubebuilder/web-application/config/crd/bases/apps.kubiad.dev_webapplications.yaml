@@ -1,0 +1,76 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: webapplications.apps.kubiad.dev
+spec:
+  group: apps.kubiad.dev
+  names:
+    kind: WebApplication
+    listKind: WebApplicationList
+    plural: webapplications
+    shortNames:
+      - webapp
+    singular: webapplication
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.phase
+          name: Phase
+          type: string
+        - jsonPath: .status.readyReplicas
+          name: Ready
+          type: integer
+        - jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: WebApplication is the Schema for the webapplications API
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: WebApplicationSpec defines the desired state of WebApplication
+              properties:
+                image:
+                  description: Image is the container image for the application
+                  minLength: 1
+                  type: string
+                port:
+                  default: 8080
+                  description: Port is the application container and Service port
+                  format: int32
+                  maximum: 65535
+                  minimum: 1
+                  type: integer
+                replicas:
+                  default: 1
+                  description: Replicas is the desired number of application replicas
+                  format: int32
+                  maximum: 10
+                  minimum: 0
+                  type: integer
+              required:
+                - image
+              type: object
+            status:
+              description: WebApplicationStatus defines the observed state of WebApplication
+              properties:
+                phase:
+                  description: Phase is Ready when the Deployment has reached its desired state
+                  type: string
+                readyReplicas:
+                  description: ReadyReplicas is the observed number of ready Deployment replicas
+                  format: int32
+                  type: integer
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
