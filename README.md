@@ -20,7 +20,15 @@ go test ./...
 go build ./...
 ```
 
-Future compiler golden outputs belong in `testdata/codegen`.
+## Generator golden tests
+
+The expected WebApplication output is stored in [`testdata/codegen/web-application`](testdata/codegen/web-application). The regular test suite compares every generated file with this snapshot and builds a temporary copy of it.
+
+Update the snapshot only after intentionally reviewing a generator change:
+
+```sh
+UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateWebApplicationGolden
+```
 
 ## Current generator slice
 

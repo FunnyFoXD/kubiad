@@ -1,0 +1,6 @@
+apiVersion: apps.kubiad.dev/v1alpha1
+kind: WebApplication
+metadata:
+  name: example-webapplication
+spec:
+  image: example:latest
