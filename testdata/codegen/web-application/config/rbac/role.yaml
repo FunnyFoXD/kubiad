@@ -1,0 +1,39 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubiad-manager-role
+rules:
+  - apiGroups:
+      - apps.kubiad.dev
+    resources:
+      - webapplications
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps.kubiad.dev
+    resources:
+      - webapplications/status
+    verbs:
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - \"\"
+    resources:
+      - services
+    verbs:
+      - create
+      - get
+      - list
+      - update
+      - watch
