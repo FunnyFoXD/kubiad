@@ -21,3 +21,22 @@ go build ./...
 ```
 
 Future compiler golden outputs belong in `testdata/codegen`.
+
+## Current generator slice
+
+The current CLI generates the WebApplication API, CRD, RBAC, and a controller-runtime reconciler from the manually constructed validated IR. The reconciler creates and updates the Deployment and ClusterIP Service, propagates the image, replica count, and port from the custom resource, and writes its phase and ready replica count to status:
+
+```sh
+go run ./cmd/kubiad generate-web-application --output generated --module example.test/webapplication
+cd generated
+go mod tidy
+go build ./...
+```
+
+The generated project includes a container build recipe and deploy manifests. Replace `controller:latest` with a published image, then apply the kustomize entry point:
+
+```sh
+kustomize build config/default | kubectl apply -f -
+```
+
+The `.kbi` parser and broader type-directed code generation are the next steps.
