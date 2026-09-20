@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -30,27 +29,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 	if err != nil { return ctrl.Result{}, err }
 	replicas, err := int32Value(application, "replicas", 1)
 	if err != nil { return ctrl.Result{}, err }
-	containerPort, err := int32Value(application, "port", 8080)
-	if err != nil { return ctrl.Result{}, err }
-	servicePort, err := int32Value(application, "port", 8080)
-	if err != nil { return ctrl.Result{}, err }
-	serviceTargetPort, err := int32Value(application, "port", 8080)
-	if err != nil { return ctrl.Result{}, err }
-	labels := map[string]string{"kubiad.dev/instance": application.GetName(), "kubiad.dev/resource": "application"}
-	deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + "-application", Namespace: application.GetNamespace()}}
+	labels := map[string]string{"kubiad.dev/instance": application.GetName(), "kubiad.dev/resource": "worker"}
+	deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + "-worker", Namespace: application.GetNamespace()}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 		deployment.Spec.Selector = &metav1.LabelSelector{MatchLabels: labels}
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Template.ObjectMeta.Labels = labels
-		deployment.Spec.Template.Spec.Containers = []corev1.Container{{Name: "application", Image: image, Ports: []corev1.ContainerPort{{Name: "application", ContainerPort: containerPort}}}}
+		deployment.Spec.Template.Spec.Containers = []corev1.Container{{Name: "worker", Image: image, Ports: nil}}
 		return controllerutil.SetControllerReference(application, deployment, r.Scheme)
-	}); err != nil { return ctrl.Result{}, err }
-	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + "-application-service", Namespace: application.GetNamespace()}}
-	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
-		service.Spec.Type = corev1.ServiceTypeClusterIP
-		service.Spec.Selector = labels
-		service.Spec.Ports = []corev1.ServicePort{{Name: "application-service", Port: servicePort, TargetPort: intstr.FromInt32(serviceTargetPort)}}
-		return controllerutil.SetControllerReference(application, service, r.Scheme)
 	}); err != nil { return ctrl.Result{}, err }
 	if err := r.Get(ctx, client.ObjectKeyFromObject(deployment), deployment); err != nil { return ctrl.Result{}, err }
 	if err := r.updateStatus(ctx, application, deployment, replicas); err != nil { return ctrl.Result{}, err }
@@ -79,7 +65,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, application *unstructured
 }
 
 func (r *Reconciler) SetupWithManager(manager ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(manager).For(object()).Owns(&appsv1.Deployment{}).Owns(&corev1.Service{}).Complete(r)
+	return ctrl.NewControllerManagedBy(manager).For(object()).Owns(&appsv1.Deployment{}).Complete(r)
 }
 
 func requiredString(application *unstructured.Unstructured, field string) (string, error) {
@@ -107,6 +93,6 @@ func int32Value(application *unstructured.Unstructured, field string, fallback i
 
 func object() *unstructured.Unstructured {
 	resource := &unstructured.Unstructured{}
-	resource.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "WebApplication"})
+	resource.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "WorkerApplication"})
 	return resource
 }

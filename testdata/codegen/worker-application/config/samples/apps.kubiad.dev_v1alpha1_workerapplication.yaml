@@ -1,0 +1,6 @@
+apiVersion: apps.kubiad.dev/v1alpha1
+kind: WorkerApplication
+metadata:
+  name: example-workerapplication
+spec:
+  image: example:latest

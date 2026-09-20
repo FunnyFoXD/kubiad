@@ -62,21 +62,41 @@ func TestGenerateWebApplication(t *testing.T) {
 	if !strings.Contains(defaultKustomization, "../crd") || !strings.Contains(defaultKustomization, "../rbac") {
 		t.Fatal("generated default kustomization does not include RBAC")
 	}
-	tidy := exec.Command("go", "mod", "tidy")
-	tidy.Dir = destination
-	if output, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("tidy generated project: %v\\n%s", err, output)
+	testGeneratedProject(t, destination)
+}
+
+func TestGenerateWorkerApplication(t *testing.T) {
+	destination := t.TempDir()
+	if err := Generate(ir.WorkerApplication(), destination, Options{Module: "example.test/workerapplication"}); err != nil {
+		t.Fatalf("generate: %v", err)
 	}
-	command := exec.Command("go", "test", "./...")
-	command.Dir = destination
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("test generated project: %v\\n%s", err, output)
+	reconciler := readFile(t, filepath.Join(destination, "internal/controller/reconciler.go"))
+	if strings.Contains(reconciler, "corev1.Service{") || strings.Contains(reconciler, ".Owns(&corev1.Service{})") {
+		t.Fatalf("worker reconciler manages a Service:\\n%s", reconciler)
 	}
-	vet := exec.Command("go", "vet", "./...")
-	vet.Dir = destination
-	if output, err := vet.CombinedOutput(); err != nil {
-		t.Fatalf("vet generated project: %v\\n%s", err, output)
+	rbac := readFile(t, filepath.Join(destination, "config/rbac/role.yaml"))
+	if strings.Contains(rbac, "services") {
+		t.Fatalf("worker RBAC includes Service permissions:\\n%s", rbac)
 	}
+	writeGeneratedWorkerReconcilerTest(t, destination)
+	testGeneratedProject(t, destination)
+}
+
+func TestGenerateScalableWebApplication(t *testing.T) {
+	destination := t.TempDir()
+	if err := Generate(ir.ScalableWebApplication(), destination, Options{Module: "example.test/scalablewebapplication"}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	crd := readFile(t, filepath.Join(destination, "config/crd/bases/apps.kubiad.dev_scalablewebapplications.yaml"))
+	if !strings.Contains(crd, "- port") || strings.Contains(crd, "default: 8080") {
+		t.Fatalf("scalable CRD port contract = %s", crd)
+	}
+	reconciler := readFile(t, filepath.Join(destination, "internal/controller/reconciler.go"))
+	if !strings.Contains(reconciler, "requiredInt32(application, \"port\")") {
+		t.Fatalf("scalable reconciler does not require port:\\n%s", reconciler)
+	}
+	writeGeneratedScalableReconcilerTest(t, destination)
+	testGeneratedProject(t, destination)
 }
 
 func TestGenerateRejectsInvalidIR(t *testing.T) {
@@ -89,7 +109,10 @@ func TestGenerateRejectsInvalidIR(t *testing.T) {
 
 func TestGenerateRejectsUnsupportedSlice(t *testing.T) {
 	program := ir.WebApplication()
-	program.Services = nil
+	extraService := program.Services[0]
+	extraService.ID = "service:secondary"
+	extraService.Name = "secondary"
+	program.Services = append(program.Services, extraService)
 	if err := Generate(program, t.TempDir(), Options{}); err == nil {
 		t.Fatal("Generate accepted a slice that it cannot render")
 	}
@@ -102,6 +125,17 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(content)
+}
+
+func testGeneratedProject(t *testing.T, destination string) {
+	t.Helper()
+	for _, arguments := range [][]string{{"mod", "tidy"}, {"test", "./..."}, {"vet", "./..."}} {
+		command := exec.Command("go", arguments...)
+		command.Dir = destination
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("go %s: %v\\n%s", strings.Join(arguments, " "), err, output)
+		}
+	}
 }
 
 func writeGeneratedReconcilerTest(t *testing.T, destination string) {
@@ -155,6 +189,107 @@ func TestReconcileMaterializesWebApplication(t *testing.T) {
 	if ready, _, err := unstructured.NestedInt64(current.Object, "status", "readyReplicas"); err != nil || ready != 2 { t.Fatalf("ready replicas = %d, %v", ready, err) }
 }
 `
+	path := filepath.Join(destination, "internal/controller/reconciler_test.go")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write generated reconciler test: %v", err)
+	}
+}
+
+func writeGeneratedWorkerReconcilerTest(t *testing.T, destination string) {
+	t.Helper()
+	content := `package controller
+
+import (
+	"context"
+	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func TestReconcileCreatesOnlyDeployment(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := appsv1.AddToScheme(scheme); err != nil { t.Fatal(err) }
+	if err := corev1.AddToScheme(scheme); err != nil { t.Fatal(err) }
+	scheme.AddKnownTypeWithName(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "WorkerApplication"}, &unstructured.Unstructured{})
+	application := object()
+	application.SetName("example")
+	application.SetNamespace("default")
+	application.Object["spec"] = map[string]any{"image": "busybox:1.37", "replicas": int64(3)}
+	kubeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(application).WithObjects(application).Build()
+	reconciler := &Reconciler{Client: kubeClient, Scheme: scheme}
+	request := ctrl.Request{NamespacedName: client.ObjectKey{Namespace: "default", Name: "example"}}
+	if _, err := reconciler.Reconcile(ctx, request); err != nil { t.Fatal(err) }
+	deployment := &appsv1.Deployment{}
+	if err := kubeClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "example-worker"}, deployment); err != nil { t.Fatal(err) }
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 3 || len(deployment.Spec.Template.Spec.Containers[0].Ports) != 0 { t.Fatalf("deployment = %#v", deployment.Spec) }
+	service := &corev1.Service{}
+	if err := kubeClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "example-worker"}, service); !errors.IsNotFound(err) { t.Fatalf("Service error = %v, want not found", err) }
+	current := object()
+	if err := kubeClient.Get(ctx, request.NamespacedName, current); err != nil { t.Fatal(err) }
+	phase, _, err := unstructured.NestedString(current.Object, "status", "phase")
+	if err != nil || phase != "Progressing" { t.Fatalf("status phase = %q, %v", phase, err) }
+}
+`
+	writeGeneratedTestFile(t, destination, content)
+}
+
+func writeGeneratedScalableReconcilerTest(t *testing.T, destination string) {
+	t.Helper()
+	content := `package controller
+
+import (
+	"context"
+	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func TestReconcileSupportsZeroReplicasAndRequiresPort(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := appsv1.AddToScheme(scheme); err != nil { t.Fatal(err) }
+	if err := corev1.AddToScheme(scheme); err != nil { t.Fatal(err) }
+	scheme.AddKnownTypeWithName(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "ScalableWebApplication"}, &unstructured.Unstructured{})
+	application := object()
+	application.SetName("example")
+	application.SetNamespace("default")
+	application.Object["spec"] = map[string]any{"image": "nginx:1.27", "replicas": int64(0), "port": int64(8080)}
+	kubeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(application).WithObjects(application).Build()
+	reconciler := &Reconciler{Client: kubeClient, Scheme: scheme}
+	request := ctrl.Request{NamespacedName: client.ObjectKey{Namespace: "default", Name: "example"}}
+	if _, err := reconciler.Reconcile(ctx, request); err != nil { t.Fatal(err) }
+	deployment := &appsv1.Deployment{}
+	if err := kubeClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "example-application"}, deployment); err != nil { t.Fatal(err) }
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 0 || deployment.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort != 8080 { t.Fatalf("deployment = %#v", deployment.Spec) }
+	service := &corev1.Service{}
+	if err := kubeClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "example-application-service"}, service); err != nil { t.Fatal(err) }
+	if service.Spec.Ports[0].Port != 8080 || service.Spec.Ports[0].TargetPort.IntVal != 8080 { t.Fatalf("service = %#v", service.Spec) }
+	missingPort := object()
+	missingPort.Object["spec"] = map[string]any{"image": "nginx:1.27", "replicas": int64(0)}
+	if _, err := requiredInt32(missingPort, "port"); err == nil { t.Fatal("requiredInt32 accepted missing port") }
+}
+`
+	writeGeneratedTestFile(t, destination, content)
+}
+
+func writeGeneratedTestFile(t *testing.T, destination, content string) {
+	t.Helper()
 	path := filepath.Join(destination, "internal/controller/reconciler_test.go")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write generated reconciler test: %v", err)
