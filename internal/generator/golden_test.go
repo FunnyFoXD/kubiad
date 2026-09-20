@@ -14,30 +14,49 @@ import (
 	"github.com/FunnyFoXD/kubiad/internal/ir"
 )
 
-const webApplicationGoldenModule = "example.test/webapplication"
-
-func TestGenerateWebApplicationGolden(t *testing.T) {
-	generated := t.TempDir()
-	if err := Generate(ir.WebApplication(), generated, Options{Module: webApplicationGoldenModule}); err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	golden := webApplicationGoldenDirectory(t)
-	if os.Getenv("UPDATE_GOLDEN") == "1" {
-		replaceGoldenTree(t, generated, golden)
-	}
-	compareTrees(t, golden, generated)
+type operatorGolden struct {
+	name, directory, module string
+	program                 func() ir.Program
 }
 
-func TestWebApplicationGoldenBuilds(t *testing.T) {
-	destination := t.TempDir()
-	copyTree(t, webApplicationGoldenDirectory(t), destination)
-	runGeneratedCommand(t, destination, "go", "mod", "tidy")
-	runGeneratedCommand(t, destination, "go", "build", "./...")
+func TestGenerateOperatorGoldens(t *testing.T) {
+	for _, golden := range operatorGoldens() {
+		t.Run(golden.name, func(t *testing.T) {
+			generated := t.TempDir()
+			if err := Generate(golden.program(), generated, Options{Module: golden.module}); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			expected := goldenDirectory(t, golden.directory)
+			if os.Getenv("UPDATE_GOLDEN") == "1" {
+				replaceGoldenTree(t, generated, expected)
+			}
+			compareTrees(t, expected, generated)
+		})
+	}
 }
 
-func webApplicationGoldenDirectory(t *testing.T) string {
+func TestOperatorGoldensBuild(t *testing.T) {
+	for _, golden := range operatorGoldens() {
+		t.Run(golden.name, func(t *testing.T) {
+			destination := t.TempDir()
+			copyTree(t, goldenDirectory(t, golden.directory), destination)
+			runGeneratedCommand(t, destination, "go", "mod", "tidy")
+			runGeneratedCommand(t, destination, "go", "build", "./...")
+		})
+	}
+}
+
+func operatorGoldens() []operatorGolden {
+	return []operatorGolden{
+		{name: "WebApplication", directory: "web-application", module: "example.test/webapplication", program: ir.WebApplication},
+		{name: "WorkerApplication", directory: "worker-application", module: "example.test/workerapplication", program: ir.WorkerApplication},
+		{name: "ScalableWebApplication", directory: "scalable-web-application", module: "example.test/scalablewebapplication", program: ir.ScalableWebApplication},
+	}
+}
+
+func goldenDirectory(t *testing.T, name string) string {
 	t.Helper()
-	return filepath.Join("..", "..", "testdata", "codegen", "web-application")
+	return filepath.Join("..", "..", "testdata", "codegen", name)
 }
 
 func replaceGoldenTree(t *testing.T, source, destination string) {
@@ -80,13 +99,13 @@ func compareTrees(t *testing.T, expected, actual string) {
 	expectedFiles := treeFiles(t, expected)
 	actualFiles := treeFiles(t, actual)
 	if strings.Join(expectedFiles, "\n") != strings.Join(actualFiles, "\n") {
-		t.Fatalf("golden file list differs\nwant:\n%s\ngot:\n%s\nrun UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateWebApplicationGolden to update", strings.Join(expectedFiles, "\n"), strings.Join(actualFiles, "\n"))
+		t.Fatalf("golden file list differs\nwant:\n%s\ngot:\n%s\nrun UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateOperatorGoldens to update", strings.Join(expectedFiles, "\n"), strings.Join(actualFiles, "\n"))
 	}
 	for _, path := range expectedFiles {
 		expectedContent := readGoldenFile(t, filepath.Join(expected, path))
 		actualContent := readGoldenFile(t, filepath.Join(actual, path))
 		if !bytes.Equal(expectedContent, actualContent) {
-			t.Fatalf("golden file differs: %s\nrun UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateWebApplicationGolden to update", path)
+			t.Fatalf("golden file differs: %s\nrun UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateOperatorGoldens to update", path)
 		}
 	}
 }

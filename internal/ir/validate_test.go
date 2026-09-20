@@ -5,9 +5,17 @@ import (
 	"testing"
 )
 
-func TestWebApplicationIsValid(t *testing.T) {
-	if err := WebApplication().Validate(); err != nil {
-		t.Fatalf("validate WebApplication IR: %v", err)
+func TestReferenceProgramsAreValid(t *testing.T) {
+	for name, program := range map[string]Program{
+		"WebApplication":         WebApplication(),
+		"WorkerApplication":      WorkerApplication(),
+		"ScalableWebApplication": ScalableWebApplication(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := program.Validate(); err != nil {
+				t.Fatalf("validation failed: %v", err)
+			}
+		})
 	}
 }
 

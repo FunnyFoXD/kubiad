@@ -30,11 +30,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 	if err != nil { return ctrl.Result{}, err }
 	replicas, err := int32Value(application, "replicas", 1)
 	if err != nil { return ctrl.Result{}, err }
-	containerPort, err := int32Value(application, "port", 8080)
+	containerPort, err := requiredInt32(application, "port")
 	if err != nil { return ctrl.Result{}, err }
-	servicePort, err := int32Value(application, "port", 8080)
+	servicePort, err := requiredInt32(application, "port")
 	if err != nil { return ctrl.Result{}, err }
-	serviceTargetPort, err := int32Value(application, "port", 8080)
+	serviceTargetPort, err := requiredInt32(application, "port")
 	if err != nil { return ctrl.Result{}, err }
 	labels := map[string]string{"kubiad.dev/instance": application.GetName(), "kubiad.dev/resource": "application"}
 	deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + "-application", Namespace: application.GetNamespace()}}
@@ -107,6 +107,6 @@ func int32Value(application *unstructured.Unstructured, field string, fallback i
 
 func object() *unstructured.Unstructured {
 	resource := &unstructured.Unstructured{}
-	resource.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "WebApplication"})
+	resource.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "ScalableWebApplication"})
 	return resource
 }

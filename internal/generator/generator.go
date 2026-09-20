@@ -18,8 +18,8 @@ func Generate(program ir.Program, destination string, options Options) error {
 	if err := program.Validate(); err != nil {
 		return fmt.Errorf("validate IR: %w", err)
 	}
-	if len(program.Deployments) != 1 || len(program.Services) != 1 || len(program.Reconcile.Rules) != 1 || program.Reconcile.Otherwise == nil {
-		return fmt.Errorf("the current generator supports one deployment, one service, and one status rule")
+	if len(program.Deployments) != 1 || len(program.Services) > 1 || len(program.Reconcile.Rules) != 1 || program.Reconcile.Otherwise == nil {
+		return fmt.Errorf("the current generator supports one deployment, at most one service, and one status rule")
 	}
 	if options.Module == "" {
 		options.Module = "generated.kubiad.local/" + strings.ToLower(program.Operator.Name)

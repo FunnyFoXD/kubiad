@@ -10,12 +10,12 @@ import (
 
 func renderReconciler(program ir.Program) string {
 	deployment := program.Deployments[0]
-	service := program.Services[0]
-	containerPorts := "nil"
-	if deployment.ContainerPort != nil {
-		containerPorts = fmt.Sprintf("[]corev1.ContainerPort{{Name: %q, ContainerPort: port}}", deployment.Name)
+	var service ir.Service
+	hasService := len(program.Services) == 1
+	if hasService {
+		service = program.Services[0]
 	}
-	return fmt.Sprintf(strings.Join([]string{
+	lines := []string{
 		"package controller",
 		"",
 		"import (",
@@ -30,7 +30,11 @@ func renderReconciler(program ir.Program) string {
 		"\t\"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured\"",
 		"\t\"k8s.io/apimachinery/pkg/runtime\"",
 		"\t\"k8s.io/apimachinery/pkg/runtime/schema\"",
-		"\t\"k8s.io/apimachinery/pkg/util/intstr\"",
+	}
+	if hasService {
+		lines = append(lines, "\t\"k8s.io/apimachinery/pkg/util/intstr\"")
+	}
+	lines = append(lines,
 		"\tctrl \"sigs.k8s.io/controller-runtime\"",
 		"\t\"sigs.k8s.io/controller-runtime/pkg/client\"",
 		"\t\"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil\"",
@@ -44,28 +48,50 @@ func renderReconciler(program ir.Program) string {
 		"\t\tif errors.IsNotFound(err) { return ctrl.Result{}, nil }",
 		"\t\treturn ctrl.Result{}, err",
 		"\t}",
-		"\timage, err := %s",
+		fmt.Sprintf("\timage, err := %s", renderStringExpression(program, deployment.Image)),
 		"\tif err != nil { return ctrl.Result{}, err }",
-		"\treplicas, err := %s",
+		fmt.Sprintf("\treplicas, err := %s", renderIntExpression(program, deployment.Replicas)),
 		"\tif err != nil { return ctrl.Result{}, err }",
-		"\tport, err := %s",
-		"\tif err != nil { return ctrl.Result{}, err }",
-		"\tlabels := map[string]string{\"kubiad.dev/instance\": application.GetName(), \"kubiad.dev/resource\": %q}",
-		"\tdeployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + %q, Namespace: application.GetNamespace()}}",
+	)
+	containerPorts := "nil"
+	if deployment.ContainerPort != nil {
+		lines = append(lines,
+			fmt.Sprintf("\tcontainerPort, err := %s", renderIntExpression(program, *deployment.ContainerPort)),
+			"\tif err != nil { return ctrl.Result{}, err }",
+		)
+		containerPorts = fmt.Sprintf("[]corev1.ContainerPort{{Name: %q, ContainerPort: containerPort}}", deployment.Name)
+	}
+	if hasService {
+		lines = append(lines,
+			fmt.Sprintf("\tservicePort, err := %s", renderIntExpression(program, service.Port)),
+			"\tif err != nil { return ctrl.Result{}, err }",
+			fmt.Sprintf("\tserviceTargetPort, err := %s", renderIntExpression(program, service.TargetPort)),
+			"\tif err != nil { return ctrl.Result{}, err }",
+		)
+	}
+	lines = append(lines,
+		fmt.Sprintf("\tlabels := map[string]string{\"kubiad.dev/instance\": application.GetName(), \"kubiad.dev/resource\": %q}", kubernetesNamePart(deployment.Name)),
+		fmt.Sprintf("\tdeployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + %q, Namespace: application.GetNamespace()}}", "-"+kubernetesNamePart(deployment.Name)),
 		"\tif _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {",
 		"\t\tdeployment.Spec.Selector = &metav1.LabelSelector{MatchLabels: labels}",
 		"\t\tdeployment.Spec.Replicas = &replicas",
 		"\t\tdeployment.Spec.Template.ObjectMeta.Labels = labels",
-		"\t\tdeployment.Spec.Template.Spec.Containers = []corev1.Container{{Name: %q, Image: image, Ports: %s}}",
+		fmt.Sprintf("\t\tdeployment.Spec.Template.Spec.Containers = []corev1.Container{{Name: %q, Image: image, Ports: %s}}", kubernetesNamePart(deployment.Name), containerPorts),
 		"\t\treturn controllerutil.SetControllerReference(application, deployment, r.Scheme)",
 		"\t}); err != nil { return ctrl.Result{}, err }",
-		"\tservice := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + %q, Namespace: application.GetNamespace()}}",
-		"\tif _, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {",
-		"\t\tservice.Spec.Type = corev1.ServiceTypeClusterIP",
-		"\t\tservice.Spec.Selector = labels",
-		"\t\tservice.Spec.Ports = []corev1.ServicePort{{Name: %q, Port: port, TargetPort: intstr.FromInt32(port)}}",
-		"\t\treturn controllerutil.SetControllerReference(application, service, r.Scheme)",
-		"\t}); err != nil { return ctrl.Result{}, err }",
+	)
+	if hasService {
+		lines = append(lines,
+			fmt.Sprintf("\tservice := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: application.GetName() + %q, Namespace: application.GetNamespace()}}", "-"+kubernetesNamePart(service.Name)),
+			"\tif _, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {",
+			"\t\tservice.Spec.Type = corev1.ServiceTypeClusterIP",
+			"\t\tservice.Spec.Selector = labels",
+			fmt.Sprintf("\t\tservice.Spec.Ports = []corev1.ServicePort{{Name: %q, Port: servicePort, TargetPort: intstr.FromInt32(serviceTargetPort)}}", kubernetesNamePart(service.Name)),
+			"\t\treturn controllerutil.SetControllerReference(application, service, r.Scheme)",
+			"\t}); err != nil { return ctrl.Result{}, err }",
+		)
+	}
+	lines = append(lines,
 		"\tif err := r.Get(ctx, client.ObjectKeyFromObject(deployment), deployment); err != nil { return ctrl.Result{}, err }",
 		"\tif err := r.updateStatus(ctx, application, deployment, replicas); err != nil { return ctrl.Result{}, err }",
 		"\treturn ctrl.Result{}, nil",
@@ -75,9 +101,9 @@ func renderReconciler(program ir.Program) string {
 		"\tphase, readyReplicas := EvaluateStatus(DeploymentStatus{Deleting: !deployment.DeletionTimestamp.IsZero(), Generation: deployment.Generation, ObservedGeneration: deployment.Status.ObservedGeneration, UpdatedReplicas: deployment.Status.UpdatedReplicas, Replicas: deployment.Status.Replicas, AvailableReplicas: deployment.Status.AvailableReplicas, ReadyReplicas: deployment.Status.ReadyReplicas}, desiredReplicas)",
 		"\tstatus := map[string]any{}",
 		"\tif phase == \"Ready\" {",
-		"%s",
+		renderStatusAssignments(program, true),
 		"\t} else {",
-		"%s",
+		renderStatusAssignments(program, false),
 		"\t}",
 		"\tcurrent, found, err := unstructured.NestedMap(application.Object, \"status\")",
 		"\tif err != nil { return err }",
@@ -91,45 +117,45 @@ func renderReconciler(program ir.Program) string {
 		"}",
 		"",
 		"func (r *Reconciler) SetupWithManager(manager ctrl.Manager) error {",
-		"\treturn ctrl.NewControllerManagedBy(manager).For(object()).Owns(&appsv1.Deployment{}).Owns(&corev1.Service{}).Complete(r)",
+	)
+	setup := "\treturn ctrl.NewControllerManagedBy(manager).For(object()).Owns(&appsv1.Deployment{})"
+	if hasService {
+		setup += ".Owns(&corev1.Service{})"
+	}
+	lines = append(lines,
+		setup+".Complete(r)",
 		"}",
 		"",
 		"func requiredString(application *unstructured.Unstructured, field string) (string, error) {",
 		"\tvalue, found, err := unstructured.NestedString(application.Object, \"spec\", field)",
 		"\tif err != nil { return \"\", err }",
-		"\tif !found || value == \"\" { return \"\", fmt.Errorf(\"spec.%%s is required\", field) }",
+		"\tif !found || value == \"\" { return \"\", fmt.Errorf(\"spec.%s is required\", field) }",
 		"\treturn value, nil",
+		"}",
+		"",
+		"func requiredInt32(application *unstructured.Unstructured, field string) (int32, error) {",
+		"\tvalue, found, err := unstructured.NestedInt64(application.Object, \"spec\", field)",
+		"\tif err != nil { return 0, err }",
+		"\tif !found { return 0, fmt.Errorf(\"spec.%s is required\", field) }",
+		"\tif value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf(\"spec.%s is outside int32 range\", field) }",
+		"\treturn int32(value), nil",
 		"}",
 		"",
 		"func int32Value(application *unstructured.Unstructured, field string, fallback int32) (int32, error) {",
 		"\tvalue, found, err := unstructured.NestedInt64(application.Object, \"spec\", field)",
 		"\tif err != nil { return 0, err }",
 		"\tif !found { return fallback, nil }",
-		"\tif value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf(\"spec.%%s is outside int32 range\", field) }",
+		"\tif value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf(\"spec.%s is outside int32 range\", field) }",
 		"\treturn int32(value), nil",
 		"}",
 		"",
 		"func object() *unstructured.Unstructured {",
 		"\tresource := &unstructured.Unstructured{}",
-		"\tresource.SetGroupVersionKind(schema.GroupVersionKind{Group: %q, Version: %q, Kind: %q})",
+		fmt.Sprintf("\tresource.SetGroupVersionKind(schema.GroupVersionKind{Group: %q, Version: %q, Kind: %q})", program.API.Group, program.API.Version, program.API.Kind),
 		"\treturn resource",
 		"}",
-	}, "\n"),
-		renderStringExpression(program, deployment.Image),
-		renderIntExpression(program, deployment.Replicas),
-		renderIntExpression(program, service.Port),
-		kubernetesNamePart(deployment.Name),
-		"-"+kubernetesNamePart(deployment.Name),
-		kubernetesNamePart(deployment.Name),
-		containerPorts,
-		"-"+kubernetesNamePart(service.Name),
-		kubernetesNamePart(service.Name),
-		renderStatusAssignments(program, true),
-		renderStatusAssignments(program, false),
-		program.API.Group,
-		program.API.Version,
-		program.API.Kind,
 	)
+	return strings.Join(lines, "\n")
 }
 
 func renderStringExpression(program ir.Program, expression ir.Expression) string {
@@ -144,6 +170,9 @@ func renderIntExpression(program ir.Program, expression ir.Expression) string {
 		return fmt.Sprintf("func() (int32, error) { return %s, nil }()", strconv.FormatInt(int64(expression.IntValue), 10))
 	}
 	field := specField(program, expression.FieldID)
+	if field.Required {
+		return fmt.Sprintf("requiredInt32(application, %q)", field.Name)
+	}
 	fallback := int32(0)
 	if field.Default != nil {
 		fallback = field.Default.Int
