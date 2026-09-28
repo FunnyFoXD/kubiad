@@ -38,3 +38,29 @@ func TestGenerateOperatorCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceCommands(t *testing.T) {
+	source, err := filepath.Abs(filepath.Join("..", "..", "examples", "web-application.kbi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := exec.Command("go", "run", ".", "check", source)
+	if output, err := check.CombinedOutput(); err != nil {
+		t.Fatalf("check source: %v\n%s", err, output)
+	}
+	destination := t.TempDir()
+	build := exec.Command("go", "run", ".", "build", source, "--output", destination, "--module", "example.test/from-source")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build source: %v\n%s", err, output)
+	}
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = destination
+	if output, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("tidy generated source operator: %v\n%s", err, output)
+	}
+	generated := exec.Command("go", "build", "./...")
+	generated.Dir = destination
+	if output, err := generated.CombinedOutput(); err != nil {
+		t.Fatalf("build generated source operator: %v\n%s", err, output)
+	}
+}

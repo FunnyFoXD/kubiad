@@ -31,6 +31,7 @@ type ExpressionKind string
 const (
 	StringConstantExpression      ExpressionKind = "string-constant"
 	IntConstantExpression         ExpressionKind = "int-constant"
+	BoolConstantExpression        ExpressionKind = "bool-constant"
 	SpecFieldReferenceExpression  ExpressionKind = "spec-field-reference"
 	ObservableReferenceExpression ExpressionKind = "observable-property-reference"
 )
@@ -46,6 +47,7 @@ type Constant struct {
 	Type   Type
 	String string
 	Int    int32
+	Bool   bool
 	Source SourceSpan
 }
 type SpecField struct {
@@ -71,6 +73,7 @@ type Expression struct {
 	Provenance  Provenance
 	StringValue string
 	IntValue    int32
+	BoolValue   bool
 	FieldID     FieldID
 	ResourceID  ResourceID
 	Property    string

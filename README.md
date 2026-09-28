@@ -30,9 +30,21 @@ Update the snapshot only after intentionally reviewing a generator change:
 UPDATE_GOLDEN=1 go test ./internal/generator -run TestGenerateOperatorGoldens
 ```
 
-## Current generator slice
+## Kubiad source frontend
 
-The current CLI generates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from the manually constructed validated IR. It supports all three reference operator shapes:
+The MVP source grammar is implemented by a hand-written lexer and recursive-descent parser. It records source positions, builds an internal syntax tree, resolves names and lowers the result into validated IR. The reference source program is [`examples/web-application.kbi`](examples/web-application.kbi).
+
+```sh
+go run ./cmd/kubiad check examples/web-application.kbi
+go run ./cmd/kubiad build examples/web-application.kbi --output generated-web --module example.test/webapplication
+cd generated-web
+go mod tidy
+go build ./...
+```
+
+## Generator
+
+The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:
 
 ```sh
 go run ./cmd/kubiad generate-web-application --output generated-web --module example.test/webapplication
@@ -51,4 +63,4 @@ The generated project includes a container build recipe and deploy manifests. Re
 kustomize build config/default | kubectl apply -f -
 ```
 
-The `.kbi` parser and broader type-directed code generation are the next steps.
+The current generator supports one Deployment, an optional Service, one `when` status rule, and an `otherwise` branch. Broader type-directed code generation is the next step.

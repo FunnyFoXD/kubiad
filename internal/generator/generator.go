@@ -169,6 +169,8 @@ func describeExpression(expression ir.Expression) string {
 		return expression.StringValue
 	case ir.IntConstantExpression:
 		return fmt.Sprintf("%d", expression.IntValue)
+	case ir.BoolConstantExpression:
+		return strconv.FormatBool(expression.BoolValue)
 	default:
 		return string(expression.Kind)
 	}
@@ -209,7 +211,7 @@ func yamlConstant(value ir.Constant) string {
 		return fmt.Sprintf("%q", value.String)
 	}
 	if value.Type == ir.BoolType {
-		return strconv.FormatBool(value.Int != 0)
+		return strconv.FormatBool(value.Bool)
 	}
 	return strconv.FormatInt(int64(value.Int), 10)
 }

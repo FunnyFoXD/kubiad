@@ -1,0 +1,50 @@
+// A minimal end-to-end Kubiad program
+operator WebApplication {
+    api {
+        group = "apps.kubiad.dev"
+        version = "v1alpha1"
+        kind = "WebApplication"
+    }
+
+    spec {
+        image: string {
+            required
+        }
+        replicas: int {
+            default = 1
+            range = 0..10
+        }
+        port: int {
+            default = 8080
+            range = 1..65535
+        }
+    }
+
+    status {
+        phase: string
+        readyReplicas: int
+    }
+
+    resources {
+        deployment application {
+            image = spec.image
+            replicas = spec.replicas
+            containerPort = spec.port
+        }
+        service applicationService {
+            target = deployment.application
+            port = spec.port
+        }
+    }
+
+    reconcile {
+        when deployment.application.ready {
+            status.phase = "Ready"
+            status.readyReplicas = deployment.application.readyReplicas
+        }
+        otherwise {
+            status.phase = "Progressing"
+            status.readyReplicas = deployment.application.readyReplicas
+        }
+    }
+}
