@@ -198,6 +198,8 @@ func renderStatusValue(expression ir.Expression) string {
 		return fmt.Sprintf("%q", expression.StringValue)
 	case ir.IntConstantExpression:
 		return fmt.Sprintf("int64(%d)", expression.IntValue)
+	case ir.BoolConstantExpression:
+		return strconv.FormatBool(expression.BoolValue)
 	case ir.ObservableReferenceExpression:
 		if expression.Property == "ready" {
 			return "phase == \"Ready\""

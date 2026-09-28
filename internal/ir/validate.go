@@ -137,6 +137,10 @@ func validateExpression(e Expression, spec map[FieldID]SpecField, deployments ma
 		if e.Type != IntType || e.Provenance != Desired {
 			return fmt.Errorf("invalid int constant")
 		}
+	case BoolConstantExpression:
+		if e.Type != BoolType || e.Provenance != Desired {
+			return fmt.Errorf("invalid bool constant")
+		}
 	case SpecFieldReferenceExpression:
 		f, ok := spec[e.FieldID]
 		if !ok || e.Type != f.Type || e.BindingTime != ReconcileTime || e.Provenance != Desired {
