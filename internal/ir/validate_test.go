@@ -39,6 +39,15 @@ func TestValidateRequiresOtherwiseForStatusCoverage(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsStatusWithoutReconcile(t *testing.T) {
+	program := WebApplication()
+	program.Reconcile = Reconcile{}
+	err := program.Validate()
+	if err == nil || !strings.Contains(err.Error(), "is not assigned on every reconcile path") {
+		t.Fatalf("Validate() error = %v, want unassigned status error", err)
+	}
+}
+
 func TestValidateRejectsCorpusStaticCases(t *testing.T) {
 	tests := []struct {
 		name     string

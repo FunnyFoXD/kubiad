@@ -2,14 +2,25 @@ package generator
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/FunnyFoXD/kubiad/internal/ir"
 )
 
-func renderReconciler(program ir.Program) string {
+func renderReconciler(program ir.Program) (string, error) {
 	deployment := program.Deployments[0]
+	image, err := renderExpression(program, deployment.Image)
+	if err != nil {
+		return "", err
+	}
+	replicas, err := renderExpression(program, deployment.Replicas)
+	if err != nil {
+		return "", err
+	}
+	statusEvaluation, err := renderStatusEvaluation(program)
+	if err != nil {
+		return "", err
+	}
 	var service ir.Service
 	hasService := len(program.Services) == 1
 	if hasService {
@@ -48,24 +59,36 @@ func renderReconciler(program ir.Program) string {
 		"\t\tif errors.IsNotFound(err) { return ctrl.Result{}, nil }",
 		"\t\treturn ctrl.Result{}, err",
 		"\t}",
-		fmt.Sprintf("\timage, err := %s", renderStringExpression(program, deployment.Image)),
+		fmt.Sprintf("\timage, err := %s", image),
 		"\tif err != nil { return ctrl.Result{}, err }",
-		fmt.Sprintf("\treplicas, err := %s", renderIntExpression(program, deployment.Replicas)),
+		fmt.Sprintf("\treplicas, err := %s", replicas),
 		"\tif err != nil { return ctrl.Result{}, err }",
 	)
 	containerPorts := "nil"
 	if deployment.ContainerPort != nil {
+		port, err := renderExpression(program, *deployment.ContainerPort)
+		if err != nil {
+			return "", err
+		}
 		lines = append(lines,
-			fmt.Sprintf("\tcontainerPort, err := %s", renderIntExpression(program, *deployment.ContainerPort)),
+			fmt.Sprintf("\tcontainerPort, err := %s", port),
 			"\tif err != nil { return ctrl.Result{}, err }",
 		)
 		containerPorts = fmt.Sprintf("[]corev1.ContainerPort{{Name: %q, ContainerPort: containerPort}}", deployment.Name)
 	}
 	if hasService {
+		port, err := renderExpression(program, service.Port)
+		if err != nil {
+			return "", err
+		}
+		targetPort, err := renderExpression(program, service.TargetPort)
+		if err != nil {
+			return "", err
+		}
 		lines = append(lines,
-			fmt.Sprintf("\tservicePort, err := %s", renderIntExpression(program, service.Port)),
+			fmt.Sprintf("\tservicePort, err := %s", port),
 			"\tif err != nil { return ctrl.Result{}, err }",
-			fmt.Sprintf("\tserviceTargetPort, err := %s", renderIntExpression(program, service.TargetPort)),
+			fmt.Sprintf("\tserviceTargetPort, err := %s", targetPort),
 			"\tif err != nil { return ctrl.Result{}, err }",
 		)
 	}
@@ -98,13 +121,9 @@ func renderReconciler(program ir.Program) string {
 		"}",
 		"",
 		"func (r *Reconciler) updateStatus(ctx context.Context, application *unstructured.Unstructured, deployment *appsv1.Deployment, desiredReplicas int32) error {",
-		"\tphase, readyReplicas := EvaluateStatus(DeploymentStatus{Deleting: !deployment.DeletionTimestamp.IsZero(), Generation: deployment.Generation, ObservedGeneration: deployment.Status.ObservedGeneration, UpdatedReplicas: deployment.Status.UpdatedReplicas, Replicas: deployment.Status.Replicas, AvailableReplicas: deployment.Status.AvailableReplicas, ReadyReplicas: deployment.Status.ReadyReplicas}, desiredReplicas)",
-		"\tstatus := map[string]any{}",
-		"\tif phase == \"Ready\" {",
-		renderStatusAssignments(program, true),
-		"\t} else {",
-		renderStatusAssignments(program, false),
-		"\t}",
+		"\tstatus, err := evaluateStatus(application, deployment, desiredReplicas)",
+		"\tif err != nil { return err }",
+		"\tif len(status) == 0 { return nil }",
 		"\tcurrent, found, err := unstructured.NestedMap(application.Object, \"status\")",
 		"\tif err != nil { return err }",
 		"\tif !found { current = map[string]any{} }",
@@ -126,28 +145,9 @@ func renderReconciler(program ir.Program) string {
 		setup+".Complete(r)",
 		"}",
 		"",
-		"func requiredString(application *unstructured.Unstructured, field string) (string, error) {",
-		"\tvalue, found, err := unstructured.NestedString(application.Object, \"spec\", field)",
-		"\tif err != nil { return \"\", err }",
-		"\tif !found || value == \"\" { return \"\", fmt.Errorf(\"spec.%s is required\", field) }",
-		"\treturn value, nil",
-		"}",
+		statusEvaluation,
 		"",
-		"func requiredInt32(application *unstructured.Unstructured, field string) (int32, error) {",
-		"\tvalue, found, err := unstructured.NestedInt64(application.Object, \"spec\", field)",
-		"\tif err != nil { return 0, err }",
-		"\tif !found { return 0, fmt.Errorf(\"spec.%s is required\", field) }",
-		"\tif value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf(\"spec.%s is outside int32 range\", field) }",
-		"\treturn int32(value), nil",
-		"}",
-		"",
-		"func int32Value(application *unstructured.Unstructured, field string, fallback int32) (int32, error) {",
-		"\tvalue, found, err := unstructured.NestedInt64(application.Object, \"spec\", field)",
-		"\tif err != nil { return 0, err }",
-		"\tif !found { return fallback, nil }",
-		"\tif value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf(\"spec.%s is outside int32 range\", field) }",
-		"\treturn int32(value), nil",
-		"}",
+		renderExpressionHelpers(),
 		"",
 		"func object() *unstructured.Unstructured {",
 		"\tresource := &unstructured.Unstructured{}",
@@ -155,59 +155,7 @@ func renderReconciler(program ir.Program) string {
 		"\treturn resource",
 		"}",
 	)
-	return strings.Join(lines, "\n")
-}
-
-func renderStringExpression(program ir.Program, expression ir.Expression) string {
-	if expression.Kind == ir.StringConstantExpression {
-		return fmt.Sprintf("func() (string, error) { return %q, nil }()", expression.StringValue)
-	}
-	return fmt.Sprintf("requiredString(application, %q)", specField(program, expression.FieldID).Name)
-}
-
-func renderIntExpression(program ir.Program, expression ir.Expression) string {
-	if expression.Kind == ir.IntConstantExpression {
-		return fmt.Sprintf("func() (int32, error) { return %s, nil }()", strconv.FormatInt(int64(expression.IntValue), 10))
-	}
-	field := specField(program, expression.FieldID)
-	if field.Required {
-		return fmt.Sprintf("requiredInt32(application, %q)", field.Name)
-	}
-	fallback := int32(0)
-	if field.Default != nil {
-		fallback = field.Default.Int
-	}
-	return fmt.Sprintf("int32Value(application, %q, %d)", field.Name, fallback)
-}
-
-func renderStatusAssignments(program ir.Program, ready bool) string {
-	assignments := program.Reconcile.Otherwise.Assignments
-	if ready {
-		assignments = program.Reconcile.Rules[0].Assignments
-	}
-	var output strings.Builder
-	for _, assignment := range assignments {
-		fmt.Fprintf(&output, "\t\tstatus[%q] = %s\n", statusField(program, assignment.TargetFieldID).Name, renderStatusValue(assignment.Value))
-	}
-	return strings.TrimSuffix(output.String(), "\n")
-}
-
-func renderStatusValue(expression ir.Expression) string {
-	switch expression.Kind {
-	case ir.StringConstantExpression:
-		return fmt.Sprintf("%q", expression.StringValue)
-	case ir.IntConstantExpression:
-		return fmt.Sprintf("int64(%d)", expression.IntValue)
-	case ir.BoolConstantExpression:
-		return strconv.FormatBool(expression.BoolValue)
-	case ir.ObservableReferenceExpression:
-		if expression.Property == "ready" {
-			return "phase == \"Ready\""
-		}
-		return "int64(readyReplicas)"
-	default:
-		return "nil"
-	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func specField(program ir.Program, id ir.FieldID) ir.SpecField {

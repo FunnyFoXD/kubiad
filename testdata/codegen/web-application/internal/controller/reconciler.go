@@ -58,15 +58,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, application *unstructured.Unstructured, deployment *appsv1.Deployment, desiredReplicas int32) error {
-	phase, readyReplicas := EvaluateStatus(DeploymentStatus{Deleting: !deployment.DeletionTimestamp.IsZero(), Generation: deployment.Generation, ObservedGeneration: deployment.Status.ObservedGeneration, UpdatedReplicas: deployment.Status.UpdatedReplicas, Replicas: deployment.Status.Replicas, AvailableReplicas: deployment.Status.AvailableReplicas, ReadyReplicas: deployment.Status.ReadyReplicas}, desiredReplicas)
-	status := map[string]any{}
-	if phase == "Ready" {
-		status["phase"] = "Ready"
-		status["readyReplicas"] = int64(readyReplicas)
-	} else {
-		status["phase"] = "Progressing"
-		status["readyReplicas"] = int64(readyReplicas)
-	}
+	status, err := evaluateStatus(application, deployment, desiredReplicas)
+	if err != nil { return err }
+	if len(status) == 0 { return nil }
 	current, found, err := unstructured.NestedMap(application.Object, "status")
 	if err != nil { return err }
 	if !found { current = map[string]any{} }
@@ -82,27 +76,76 @@ func (r *Reconciler) SetupWithManager(manager ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(manager).For(object()).Owns(&appsv1.Deployment{}).Owns(&corev1.Service{}).Complete(r)
 }
 
+func evaluateStatus(application *unstructured.Unstructured, deployment *appsv1.Deployment, desiredReplicas int32) (map[string]any, error) {
+	status := map[string]any{}
+	condition0, err := deploymentReady(deployment, desiredReplicas)
+	if err != nil { return nil, fmt.Errorf("when 1: %w", err) }
+	if condition0 {
+		statusValue0, err := func() (string, error) { return "Ready", nil }()
+		if err != nil { return nil, fmt.Errorf("status.phase: %w", err) }
+		status["phase"] = statusValue0
+		statusValue1, err := func() (int32, error) { return deployment.Status.ReadyReplicas, nil }()
+		if err != nil { return nil, fmt.Errorf("status.readyReplicas: %w", err) }
+		status["readyReplicas"] = int64(statusValue1)
+		return status, nil
+	}
+	statusValue0, err := func() (string, error) { return "Progressing", nil }()
+	if err != nil { return nil, fmt.Errorf("status.phase: %w", err) }
+	status["phase"] = statusValue0
+	statusValue1, err := func() (int32, error) { return deployment.Status.ReadyReplicas, nil }()
+	if err != nil { return nil, fmt.Errorf("status.readyReplicas: %w", err) }
+	status["readyReplicas"] = int64(statusValue1)
+	return status, nil
+}
+
+
 func requiredString(application *unstructured.Unstructured, field string) (string, error) {
-	value, found, err := unstructured.NestedString(application.Object, "spec", field)
-	if err != nil { return "", err }
-	if !found || value == "" { return "", fmt.Errorf("spec.%s is required", field) }
-	return value, nil
+    value, found, err := unstructured.NestedString(application.Object, "spec", field)
+    if err != nil { return "", err }
+    if !found || value == "" { return "", fmt.Errorf("spec.%s is required", field) }
+    return value, nil
+}
+
+func stringValue(application *unstructured.Unstructured, field string, fallback string) (string, error) {
+    value, found, err := unstructured.NestedString(application.Object, "spec", field)
+    if err != nil { return "", err }
+    if !found { return fallback, nil }
+    return value, nil
 }
 
 func requiredInt32(application *unstructured.Unstructured, field string) (int32, error) {
-	value, found, err := unstructured.NestedInt64(application.Object, "spec", field)
-	if err != nil { return 0, err }
-	if !found { return 0, fmt.Errorf("spec.%s is required", field) }
-	if value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf("spec.%s is outside int32 range", field) }
-	return int32(value), nil
+    value, found, err := unstructured.NestedInt64(application.Object, "spec", field)
+    if err != nil { return 0, err }
+    if !found { return 0, fmt.Errorf("spec.%s is required", field) }
+    if value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf("spec.%s is outside int32 range", field) }
+    return int32(value), nil
 }
 
 func int32Value(application *unstructured.Unstructured, field string, fallback int32) (int32, error) {
-	value, found, err := unstructured.NestedInt64(application.Object, "spec", field)
-	if err != nil { return 0, err }
-	if !found { return fallback, nil }
-	if value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf("spec.%s is outside int32 range", field) }
-	return int32(value), nil
+    value, found, err := unstructured.NestedInt64(application.Object, "spec", field)
+    if err != nil { return 0, err }
+    if !found { return fallback, nil }
+    if value < math.MinInt32 || value > math.MaxInt32 { return 0, fmt.Errorf("spec.%s is outside int32 range", field) }
+    return int32(value), nil
+}
+
+func requiredBool(application *unstructured.Unstructured, field string) (bool, error) {
+    value, found, err := unstructured.NestedBool(application.Object, "spec", field)
+    if err != nil { return false, err }
+    if !found { return false, fmt.Errorf("spec.%s is required", field) }
+    return value, nil
+}
+
+func boolValue(application *unstructured.Unstructured, field string, fallback bool) (bool, error) {
+    value, found, err := unstructured.NestedBool(application.Object, "spec", field)
+    if err != nil { return false, err }
+    if !found { return fallback, nil }
+    return value, nil
+}
+
+func deploymentReady(deployment *appsv1.Deployment, desiredReplicas int32) (bool, error) {
+    phase, _ := EvaluateStatus(DeploymentStatus{Deleting: !deployment.DeletionTimestamp.IsZero(), Generation: deployment.Generation, ObservedGeneration: deployment.Status.ObservedGeneration, UpdatedReplicas: deployment.Status.UpdatedReplicas, Replicas: deployment.Status.Replicas, AvailableReplicas: deployment.Status.AvailableReplicas, ReadyReplicas: deployment.Status.ReadyReplicas}, desiredReplicas)
+    return phase == "Ready", nil
 }
 
 func object() *unstructured.Unstructured {

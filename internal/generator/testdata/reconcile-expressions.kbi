@@ -1,0 +1,71 @@
+operator ExpressionApplication {
+    api {
+        group = "apps.kubiad.dev"
+        version = "v1alpha1"
+        kind = "ExpressionApplication"
+    }
+    spec {
+        image: string { default = "nginx:1.27" }
+        replicas: int { default = 1 }
+        enabled: bool { default = true }
+        requiredFlag: bool { required }
+        message: string { default = "default\nmessage\\n" }
+        count: int { default = 7 }
+        optionalFlag: bool
+        optionalMessage: string
+        optionalCount: int
+    }
+    status {
+        phase: string
+        enabledEcho: bool
+        requiredEcho: bool
+        messageEcho: string
+        countEcho: int
+        optionalFlagEcho: bool
+        optionalMessageEcho: string
+        optionalCountEcho: int
+        ready: bool
+        readyReplicas: int
+        literalBool: bool
+        literalInt: int
+        literalString: string
+    }
+    resources {
+        deployment application {
+            image = spec.image
+            replicas = spec.replicas
+        }
+    }
+    reconcile {
+        when spec.enabled {
+            status.phase = "Enabled"
+            status.enabledEcho = spec.enabled
+            status.requiredEcho = spec.requiredFlag
+            status.messageEcho = spec.message
+            status.countEcho = spec.count
+            status.optionalFlagEcho = spec.optionalFlag
+            status.optionalMessageEcho = spec.optionalMessage
+            status.optionalCountEcho = spec.optionalCount
+            status.ready = deployment.application.ready
+            status.readyReplicas = deployment.application.readyReplicas
+            status.literalBool = true
+            status.literalInt = 42
+            status.literalString = "line\n\"quoted\"\\n\tend"
+        }
+        otherwise {
+            status.phase = "Disabled"
+            status.enabledEcho = spec.enabled
+            status.requiredEcho = spec.requiredFlag
+            status.messageEcho = spec.message
+            status.countEcho = spec.count
+            status.optionalFlagEcho = spec.optionalFlag
+            status.optionalMessageEcho = spec.optionalMessage
+            status.optionalCountEcho = spec.optionalCount
+            status.ready = deployment.application.ready
+            status.readyReplicas = deployment.application.readyReplicas
+            status.literalBool = false
+            status.literalInt = 0
+            status.literalString = "disabled"
+        }
+    }
+}

@@ -43,16 +43,16 @@ func renderManager(program ir.Program, module string) string {
 
 func renderSample(program ir.Program) string {
 	var output strings.Builder
-	fmt.Fprintf(&output, "apiVersion: %s/%s\\nkind: %s\\nmetadata:\\n  name: example-%s\\nspec:\\n", program.API.Group, program.API.Version, program.API.Kind, strings.ToLower(program.API.Kind))
+	fmt.Fprintf(&output, "apiVersion: %s/%s\nkind: %s\nmetadata:\n  name: example-%s\nspec:\n", program.API.Group, program.API.Version, program.API.Kind, strings.ToLower(program.API.Kind))
 	for _, field := range program.SpecFields {
 		if field.Required {
 			switch field.Type {
 			case ir.StringType:
-				fmt.Fprintf(&output, "  %s: example:latest\\n", field.Name)
+				fmt.Fprintf(&output, "  %s: example:latest\n", field.Name)
 			case ir.IntType:
-				fmt.Fprintf(&output, "  %s: 1\\n", field.Name)
+				fmt.Fprintf(&output, "  %s: 1\n", field.Name)
 			case ir.BoolType:
-				fmt.Fprintf(&output, "  %s: true\\n", field.Name)
+				fmt.Fprintf(&output, "  %s: true\n", field.Name)
 			}
 		}
 	}

@@ -2,7 +2,8 @@ package controller
 
 type ResourcePlan struct { ID string; Kind string; Name string }
 type AssignmentPlan struct { TargetField string; Expression string }
-type ReconcilePlan struct { Resources []ResourcePlan; Condition string; OnReady []AssignmentPlan; Otherwise []AssignmentPlan }
+type RulePlan struct { Condition string; Assignments []AssignmentPlan }
+type ReconcilePlan struct { Resources []ResourcePlan; Rules []RulePlan; Otherwise []AssignmentPlan }
 type DeploymentStatus struct { Deleting bool; Generation int64; ObservedGeneration int64; UpdatedReplicas int32; Replicas int32; AvailableReplicas int32; ReadyReplicas int32 }
 
 func EvaluateStatus(status DeploymentStatus, desiredReplicas int32) (string, int32) {
@@ -12,6 +13,7 @@ return "Ready", status.ReadyReplicas }
 func Plan() ReconcilePlan { return ReconcilePlan{
 Resources: []ResourcePlan{
 {ID: "deployment:worker", Kind: "Deployment", Name: "worker"},},
-Condition: "deployment:worker.ready",OnReady: []AssignmentPlan{
-{TargetField: "status:phase", Expression: "Ready"},{TargetField: "status:readyReplicas", Expression: "deployment:worker.readyReplicas"},}, Otherwise: []AssignmentPlan{
+Rules: []RulePlan{
+{Condition: "deployment:worker.ready", Assignments: []AssignmentPlan{{TargetField: "status:phase", Expression: "Ready"},{TargetField: "status:readyReplicas", Expression: "deployment:worker.readyReplicas"},}},
+}, Otherwise: []AssignmentPlan{
 {TargetField: "status:phase", Expression: "Progressing"},{TargetField: "status:readyReplicas", Expression: "deployment:worker.readyReplicas"},},} }

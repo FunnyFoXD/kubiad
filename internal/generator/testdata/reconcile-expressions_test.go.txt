@@ -1,0 +1,166 @@
+package controller
+
+import (
+	"context"
+	"math"
+	"reflect"
+	"strings"
+	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func setupExpressionTest(t *testing.T, spec map[string]any) (*Reconciler, *unstructured.Unstructured) {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	scheme.AddKnownTypeWithName(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "ExpressionApplication"}, &unstructured.Unstructured{})
+	application := object()
+	application.SetName("example")
+	application.SetNamespace("default")
+	application.SetUID("expression-test")
+	application.Object["spec"] = spec
+	application.Object["status"] = map[string]any{"external": "preserved"}
+	kubeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(application).WithObjects(application).Build()
+	return &Reconciler{Client: kubeClient, Scheme: scheme}, application
+}
+
+func expressionStatus(t *testing.T, reconciler *Reconciler, application *unstructured.Unstructured) map[string]any {
+	t.Helper()
+	actual := object()
+	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(application), actual); err != nil {
+		t.Fatal(err)
+	}
+	status, _, err := unstructured.NestedMap(actual.Object, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return status
+}
+
+func TestConditionUsesSpecInsteadOfDeploymentReadiness(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		for _, ready := range []bool{true, false} {
+			t.Run(map[bool]string{true: "enabled", false: "disabled"}[enabled]+"/"+map[bool]string{true: "ready", false: "progressing"}[ready], func(t *testing.T) {
+				reconciler, application := setupExpressionTest(t, map[string]any{"enabled": enabled, "requiredFlag": false})
+				deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Generation: 4}}
+				if ready {
+					deployment.Status = appsv1.DeploymentStatus{ObservedGeneration: 4, UpdatedReplicas: 1, Replicas: 1, AvailableReplicas: 1, ReadyReplicas: 1}
+				}
+				if err := reconciler.updateStatus(context.Background(), application, deployment, 1); err != nil {
+					t.Fatal(err)
+				}
+				status := expressionStatus(t, reconciler, application)
+				wantPhase := map[bool]string{true: "Enabled", false: "Disabled"}[enabled]
+				if status["phase"] != wantPhase || status["enabledEcho"] != enabled || status["ready"] != ready {
+					t.Fatalf("status = %#v, want phase %s, enabled %t and ready %t", status, wantPhase, enabled, ready)
+				}
+				if status["literalBool"] != enabled || status["external"] != "preserved" {
+					t.Fatalf("literal or existing status lost: %#v", status)
+				}
+				wantLiteral, wantInt := "disabled", int64(0)
+				if enabled {
+					wantLiteral, wantInt = "line\n\"quoted\"\\n\tend", 42
+				}
+				if status["literalString"] != wantLiteral || status["literalInt"] != wantInt {
+					t.Fatalf("literal values = %#v, want string %q and int %d", status, wantLiteral, wantInt)
+				}
+			})
+		}
+	}
+}
+
+func TestStatusAssignmentPreservesRuntimeStringsAndIntegerBounds(t *testing.T) {
+	for _, count := range []int64{math.MinInt32, math.MaxInt32} {
+		message := "line\n\"quoted\"\\n\tend"
+		reconciler, application := setupExpressionTest(t, map[string]any{"enabled": true, "requiredFlag": true, "message": message, "count": count})
+		if err := reconciler.updateStatus(context.Background(), application, &appsv1.Deployment{}, 1); err != nil {
+			t.Fatal(err)
+		}
+		status := expressionStatus(t, reconciler, application)
+		if status["messageEcho"] != message || status["countEcho"] != count || status["requiredEcho"] != true {
+			t.Fatalf("status = %#v, want message %q and count %d", status, message, count)
+		}
+	}
+}
+
+func TestReconcileDefaultsAndExplicitZeroValues(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		spec     map[string]any
+		image    string
+		replicas int32
+		phase    string
+		message  string
+		count    int64
+	}{
+		{name: "defaults", spec: map[string]any{"requiredFlag": false}, image: "nginx:1.27", replicas: 1, phase: "Enabled", message: "default\nmessage\\n", count: 7},
+		{name: "explicit zero values", spec: map[string]any{"image": "custom:1", "replicas": int64(0), "enabled": false, "requiredFlag": false, "message": "", "count": int64(0)}, image: "custom:1", replicas: 0, phase: "Disabled", message: "", count: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reconciler, application := setupExpressionTest(t, test.spec)
+			request := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(application)}
+			if _, err := reconciler.Reconcile(context.Background(), request); err != nil {
+				t.Fatal(err)
+			}
+			deployment := &appsv1.Deployment{}
+			if err := reconciler.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "example-application"}, deployment); err != nil {
+				t.Fatal(err)
+			}
+			if *deployment.Spec.Replicas != test.replicas || deployment.Spec.Template.Spec.Containers[0].Image != test.image {
+				t.Fatalf("deployment spec = %#v", deployment.Spec)
+			}
+			status := expressionStatus(t, reconciler, application)
+			for field, want := range map[string]any{"phase": test.phase, "messageEcho": test.message, "countEcho": test.count, "requiredEcho": false, "optionalFlagEcho": false, "optionalMessageEcho": "", "optionalCountEcho": int64(0)} {
+				if !reflect.DeepEqual(status[field], want) {
+					t.Errorf("status.%s = %#v, want %#v", field, status[field], want)
+				}
+			}
+		})
+	}
+}
+
+func TestExpressionErrorsDoNotWritePartialStatus(t *testing.T) {
+	for _, test := range []struct {
+		name, field string
+		value       any
+		missing     bool
+	}{
+		{name: "missing required bool", field: "requiredFlag", missing: true},
+		{name: "invalid condition", field: "enabled", value: "yes"},
+		{name: "invalid required bool", field: "requiredFlag", value: int64(1)},
+		{name: "invalid string", field: "message", value: true},
+		{name: "invalid int", field: "count", value: "many"},
+		{name: "int overflow", field: "count", value: int64(math.MaxInt32) + 1},
+		{name: "int underflow", field: "count", value: int64(math.MinInt32) - 1},
+		{name: "invalid optional bool", field: "optionalFlag", value: "false"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec := map[string]any{"enabled": true, "requiredFlag": false}
+			if test.missing {
+				delete(spec, test.field)
+			} else {
+				spec[test.field] = test.value
+			}
+			reconciler, application := setupExpressionTest(t, spec)
+			before := expressionStatus(t, reconciler, application)
+			if err := reconciler.updateStatus(context.Background(), application, &appsv1.Deployment{}, 1); err == nil {
+				t.Fatal("invalid input was accepted")
+			} else if !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("error = %v, want field %s", err, test.field)
+			}
+			if after := expressionStatus(t, reconciler, application); !reflect.DeepEqual(before, after) {
+				t.Fatalf("status changed on failure: before %#v, after %#v", before, after)
+			}
+		})
+	}
+}
