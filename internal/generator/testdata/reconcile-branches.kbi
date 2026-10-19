@@ -1,0 +1,28 @@
+operator BranchApplication {
+    api { group = "apps.kubiad.dev" version = "v1alpha1" kind = "BranchApplication" }
+    spec {
+        first: bool { required }
+        second: bool { required }
+        message: string { required }
+    }
+    status { phase: string detail: string }
+    resources { deployment application { image = "nginx:1.27" replicas = 1 } }
+    reconcile {
+        when spec.first {
+            status.phase = "First"
+            status.detail = "first"
+        }
+        when spec.second {
+            status.phase = "Second"
+            status.detail = spec.message
+        }
+        when deployment.application.ready {
+            status.phase = "ObservedReady"
+            status.detail = "ready"
+        }
+        otherwise {
+            status.phase = "Fallback"
+            status.detail = "fallback"
+        }
+    }
+}

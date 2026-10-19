@@ -114,7 +114,7 @@ func (p Program) Validate() error {
 	if p.Reconcile.Otherwise != nil {
 		return validateAssignments(p.Reconcile.Otherwise.Assignments, status, spec, deployments)
 	}
-	return nil
+	return validateAssignments(nil, status, spec, deployments)
 }
 
 func validateDesired(e Expression, expected Type, spec map[FieldID]SpecField, deployments map[ResourceID]Deployment) error {

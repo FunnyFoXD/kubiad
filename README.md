@@ -63,4 +63,12 @@ The generated project includes a container build recipe and deploy manifests. Re
 kustomize build config/default | kubectl apply -f -
 ```
 
-The current generator supports one Deployment, an optional Service, one `when` status rule, and an `otherwise` branch. Broader type-directed code generation is the next step.
+The current generator supports one Deployment and an optional Service. Reconcile rules evaluate their declared boolean conditions in source order and execute the first matching branch, followed by `otherwise` if none match. An unconditional `otherwise` block and operators without status fields or reconcile rules are also supported.
+
+Status assignments support string, int, and bool literals, typed `spec` references, and Deployment observations. Missing optional spec fields use their declared defaults or the type's zero value; explicit `false`, `0`, and empty strings are preserved. Expression errors leave the existing status unchanged, and unchanged status is not written again.
+
+Behavioral regression tests parse `.kbi` fixtures, generate projects, and run tests against the generated controllers:
+
+```sh
+go test ./internal/generator -run TestGeneratedReconcile -count=1
+```

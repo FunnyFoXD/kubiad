@@ -1,0 +1,94 @@
+package controller
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func TestReconcileUsesFirstMatchingBranch(t *testing.T) {
+	for _, test := range []struct {
+		name                      string
+		spec                      map[string]any
+		ready                     bool
+		phase, detail, errorField string
+	}{
+		{name: "first wins over other matching branches", spec: map[string]any{"first": true, "second": true, "message": "second"}, ready: true, phase: "First", detail: "first"},
+		{name: "unreachable fields are not read", spec: map[string]any{"first": true}, phase: "First", detail: "first"},
+		{name: "second wins over observed ready", spec: map[string]any{"first": false, "second": true, "message": "second"}, ready: true, phase: "Second", detail: "second"},
+		{name: "observed ready selects third branch", spec: map[string]any{"first": false, "second": false}, ready: true, phase: "ObservedReady", detail: "ready"},
+		{name: "fallback", spec: map[string]any{"first": false, "second": false}, phase: "Fallback", detail: "fallback"},
+		{name: "missing first condition", spec: map[string]any{}, errorField: "first"},
+		{name: "missing reached condition", spec: map[string]any{"first": false}, errorField: "second"},
+		{name: "malformed reached condition", spec: map[string]any{"first": false, "second": "yes"}, errorField: "second"},
+		{name: "missing chosen assignment", spec: map[string]any{"first": false, "second": true}, errorField: "message"},
+		{name: "empty required string", spec: map[string]any{"first": false, "second": true, "message": ""}, errorField: "message"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			scheme.AddKnownTypeWithName(schema.GroupVersionKind{Group: "apps.kubiad.dev", Version: "v1alpha1", Kind: "BranchApplication"}, &unstructured.Unstructured{})
+			application := object()
+			application.SetName("example")
+			application.SetNamespace("default")
+			application.Object["spec"] = test.spec
+			application.Object["status"] = map[string]any{"phase": "Before"}
+			kubeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(application).WithObjects(application).Build()
+			reconciler := &Reconciler{Client: kubeClient, Scheme: scheme}
+			deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+			if test.ready {
+				deployment.Status = appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, Replicas: 1, AvailableReplicas: 1, ReadyReplicas: 1}
+			}
+			err := reconciler.updateStatus(context.Background(), application, deployment, 1)
+			if test.errorField == "" && err != nil {
+				t.Fatal(err)
+			}
+			if test.errorField != "" && (err == nil || !strings.Contains(err.Error(), test.errorField)) {
+				t.Fatalf("error = %v, want error about %s", err, test.errorField)
+			}
+			actual := object()
+			if err := kubeClient.Get(context.Background(), client.ObjectKeyFromObject(application), actual); err != nil {
+				t.Fatal(err)
+			}
+			status, _, err := unstructured.NestedMap(actual.Object, "status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.errorField != "" {
+				if status["phase"] != "Before" || len(status) != 1 {
+					t.Fatalf("status changed on failure: %#v", status)
+				}
+			} else if status["phase"] != test.phase || status["detail"] != test.detail {
+				t.Fatalf("status = %#v, want %s/%s", status, test.phase, test.detail)
+			}
+			if test.errorField == "" {
+				firstVersion := actual.GetResourceVersion()
+				if err := reconciler.updateStatus(context.Background(), actual, deployment, 1); err != nil {
+					t.Fatal(err)
+				}
+				if err := kubeClient.Get(context.Background(), client.ObjectKeyFromObject(application), actual); err != nil {
+					t.Fatal(err)
+				}
+				if actual.GetResourceVersion() != firstVersion {
+					t.Fatal("unchanged status was written again")
+				}
+			}
+		})
+	}
+	plan := Plan()
+	if len(plan.Rules) != 3 {
+		t.Fatalf("plan has %d rules, want 3", len(plan.Rules))
+	}
+	for index, want := range []string{"spec:first", "spec:second", "deployment:application.ready"} {
+		if plan.Rules[index].Condition != want {
+			t.Fatalf("plan rule %d = %#v", index, plan.Rules[index])
+		}
+	}
+}
