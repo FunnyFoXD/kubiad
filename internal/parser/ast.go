@@ -13,7 +13,6 @@ type sourceFile struct {
 
 type apiSection struct {
 	values map[string]literal
-	spans  map[string]ir.SourceSpan
 }
 
 type fieldDecl struct {

@@ -42,6 +42,20 @@ go mod tidy
 go build ./...
 ```
 
+The executable frontend corpus lives in [`testdata/analysis`](testdata/analysis). Its manifest distinguishes semantic checks, syntax restrictions, cases that cannot be expressed by the current language, and scenarios requiring integration or cluster tests. Each executable negative example has a valid counterpart and an expected diagnostic phase, message, line, and column.
+
+```sh
+go test ./internal/parser -run 'TestAnalysisCorpusInventory|TestStaticAnalysisCorpus|TestFrontendRegressionCorpus' -v
+go run ./cmd/kubiad check testdata/analysis/invalid/P-01.kbi
+go run ./cmd/kubiad check testdata/analysis/valid/P-01.kbi
+```
+
+Parser fuzzing also checks deterministic diagnostics and valid IR for accepted inputs:
+
+```sh
+go test ./internal/parser -run '^$' -fuzz '^FuzzParse$' -fuzztime=20s -parallel=2
+```
+
 ## Generator
 
 The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:
