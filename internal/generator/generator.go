@@ -117,6 +117,12 @@ func renderCRD(program ir.Program) string {
 			fmt.Fprintln(&output, "                  format: int32")
 		}
 	}
+	for _, field := range program.SpecFields {
+		if field.Required {
+			fmt.Fprintln(&output, "          required:\n            - spec")
+			break
+		}
+	}
 	return output.String()
 }
 
@@ -181,10 +187,11 @@ func describeExpression(expression ir.Expression) string {
 func renderRBAC(program ir.Program) string {
 	output := fmt.Sprintf("apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: kubiad-manager-role\nrules:\n  - apiGroups:\n      - %s\n    resources:\n      - %s\n    verbs:\n      - get\n      - list\n      - watch\n  - apiGroups:\n      - %s\n    resources:\n      - %s/status\n    verbs:\n      - update\n", program.API.Group, program.API.Plural, program.API.Group, program.API.Plural)
 	if len(program.Deployments) > 0 {
+		output += fmt.Sprintf("  - apiGroups:\n      - %s\n    resources:\n      - %s/finalizers\n    verbs:\n      - update\n", program.API.Group, program.API.Plural)
 		output += "  - apiGroups:\n      - apps\n    resources:\n      - deployments\n    verbs:\n      - create\n      - get\n      - list\n      - update\n      - watch\n"
 	}
 	if len(program.Services) > 0 {
-		output += "  - apiGroups:\n      - \\\"\\\"\n    resources:\n      - services\n    verbs:\n      - create\n      - get\n      - list\n      - update\n      - watch\n"
+		output += "  - apiGroups:\n      - \"\"\n    resources:\n      - services\n    verbs:\n      - create\n      - get\n      - list\n      - update\n      - watch\n"
 	}
 	return output
 }

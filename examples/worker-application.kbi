@@ -1,0 +1,40 @@
+operator WorkerApplication {
+    api {
+        group = "apps.kubiad.dev"
+        version = "v1alpha1"
+        kind = "WorkerApplication"
+    }
+
+    spec {
+        image: string {
+            required
+        }
+        replicas: int {
+            default = 1
+            range = 0..10
+        }
+    }
+
+    status {
+        phase: string
+        readyReplicas: int
+    }
+
+    resources {
+        deployment worker {
+            image = spec.image
+            replicas = spec.replicas
+        }
+    }
+
+    reconcile {
+        when deployment.worker.ready {
+            status.phase = "Ready"
+            status.readyReplicas = deployment.worker.readyReplicas
+        }
+        otherwise {
+            status.phase = "Progressing"
+            status.readyReplicas = deployment.worker.readyReplicas
+        }
+    }
+}
