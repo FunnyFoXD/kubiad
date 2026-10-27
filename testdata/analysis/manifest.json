@@ -1,0 +1,673 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "B-01",
+      "category": "binding-time",
+      "status": "structural",
+      "invalid": "invalid/B-01.kbi",
+      "valid": "valid/B-01.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 9,
+        "column": 35,
+        "message": "default must be a compile-time literal"
+      }
+    },
+    {
+      "id": "B-02",
+      "category": "binding-time",
+      "status": "structural",
+      "invalid": "invalid/B-02.kbi",
+      "valid": "valid/B-02.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 5,
+        "column": 16,
+        "message": "api.kind must be a compile-time string literal"
+      }
+    },
+    {
+      "id": "B-03",
+      "category": "binding-time",
+      "status": "structural",
+      "invalid": "invalid/B-03.kbi",
+      "valid": "valid/B-03.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 9,
+        "column": 45,
+        "message": "range lower bound must be a compile-time integer literal"
+      }
+    },
+    {
+      "id": "C-01",
+      "category": "recovery",
+      "status": "cluster",
+      "reason": "Requires cluster or fault-injection testing"
+    },
+    {
+      "id": "C-02",
+      "category": "recovery",
+      "status": "cluster",
+      "reason": "Requires cluster or fault-injection testing"
+    },
+    {
+      "id": "C-03",
+      "category": "recovery",
+      "status": "cluster",
+      "reason": "Requires cluster or fault-injection testing"
+    },
+    {
+      "id": "C-04",
+      "category": "recovery",
+      "status": "cluster",
+      "reason": "Requires cluster or fault-injection testing"
+    },
+    {
+      "id": "E-01",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "E-02",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "E-03",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "E-04",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "E-05",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "E-06",
+      "category": "behavior",
+      "status": "integration",
+      "reason": "Requires generated-controller or API-server integration checks, not frontend rejection"
+    },
+    {
+      "id": "O-01",
+      "category": "scope",
+      "status": "out_of_scope",
+      "reason": "Concurrent field ownership is outside the supported model"
+    },
+    {
+      "id": "O-02",
+      "category": "scope",
+      "status": "out_of_scope",
+      "reason": "External side effects are outside the supported model"
+    },
+    {
+      "id": "P-01",
+      "category": "provenance",
+      "status": "semantic",
+      "invalid": "invalid/P-01.kbi",
+      "valid": "valid/P-01.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 20,
+        "column": 24,
+        "message": "observed value cannot define desired state"
+      }
+    },
+    {
+      "id": "P-02",
+      "category": "provenance",
+      "status": "not_expressible",
+      "reason": "Observed Deployment status.phase and conditional desired expressions are not supported"
+    },
+    {
+      "id": "P-03",
+      "category": "provenance",
+      "status": "not_expressible",
+      "reason": "Deployment observations expose ready and readyReplicas, not observed ports"
+    },
+    {
+      "id": "P-04",
+      "category": "provenance",
+      "status": "not_expressible",
+      "reason": "Resource existence observations and conditional desired expressions are not supported"
+    },
+    {
+      "id": "P-05",
+      "category": "provenance",
+      "status": "not_expressible",
+      "reason": "Arithmetic and conditional writes to desired resource properties are not supported"
+    },
+    {
+      "id": "P-06",
+      "category": "provenance",
+      "status": "not_expressible",
+      "reason": "Observed labels and user-defined Service selectors are not supported"
+    },
+    {
+      "id": "P-07",
+      "category": "provenance",
+      "status": "semantic",
+      "invalid": "invalid/P-07.kbi",
+      "valid": "valid/P-07.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 25,
+        "column": 24,
+        "message": "observed value cannot define desired state"
+      }
+    },
+    {
+      "id": "P-08",
+      "category": "ownership",
+      "status": "out_of_scope",
+      "reason": "HPA and shared ownership are outside the supported model"
+    },
+    {
+      "id": "R-01",
+      "category": "reference",
+      "status": "semantic",
+      "invalid": "invalid/R-01.kbi",
+      "valid": "valid/R-01.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 24,
+        "column": 33,
+        "message": "service \"applicationService\" targets unknown deployment \"backend\""
+      }
+    },
+    {
+      "id": "R-02",
+      "category": "reference",
+      "status": "structural",
+      "invalid": "invalid/R-02.kbi",
+      "valid": "valid/R-02.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 24,
+        "column": 22,
+        "message": "expected \"spec\" or \"deployment\""
+      }
+    },
+    {
+      "id": "R-03",
+      "category": "reference",
+      "status": "semantic",
+      "invalid": "invalid/R-03.kbi",
+      "valid": "valid/R-03.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 23,
+        "column": 22,
+        "message": "service \"applicationService\" targets deployment without a container port"
+      }
+    },
+    {
+      "id": "R-04",
+      "category": "name",
+      "status": "semantic",
+      "invalid": "invalid/R-04.kbi",
+      "valid": "valid/R-04.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 9,
+        "column": 9,
+        "message": "spec fields \"image\" and \"Image\" collide after Go name normalization"
+      }
+    },
+    {
+      "id": "R-05",
+      "category": "name",
+      "status": "not_expressible",
+      "reason": "Hyphens are not allowed in source identifiers, so the exact web-app/web_app collision is not representable"
+    },
+    {
+      "id": "R-06",
+      "category": "reference",
+      "status": "not_expressible",
+      "reason": "The supported dependency graph contains only Service-to-Deployment targets and cannot express a resource cycle"
+    },
+    {
+      "id": "S-01",
+      "category": "status",
+      "status": "semantic",
+      "invalid": "invalid/S-01.kbi",
+      "valid": "valid/S-01.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 29,
+        "column": 9,
+        "message": "reconcile with when blocks requires otherwise"
+      }
+    },
+    {
+      "id": "S-02",
+      "category": "status",
+      "status": "semantic",
+      "invalid": "invalid/S-02.kbi",
+      "valid": "valid/S-02.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 33,
+        "column": 9,
+        "message": "status field \"readyReplicas\" is not assigned on every reconcile path"
+      }
+    },
+    {
+      "id": "S-03",
+      "category": "status",
+      "status": "structural",
+      "invalid": "invalid/S-03.kbi",
+      "valid": "valid/S-03.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 37,
+        "column": 9,
+        "message": "duplicate otherwise block"
+      }
+    },
+    {
+      "id": "S-04",
+      "category": "status",
+      "status": "structural",
+      "invalid": "invalid/S-04.kbi",
+      "valid": "valid/S-04.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 33,
+        "column": 9,
+        "message": "when block cannot follow otherwise"
+      }
+    },
+    {
+      "id": "S-05",
+      "category": "status",
+      "status": "structural",
+      "invalid": "invalid/S-05.kbi",
+      "valid": "valid/S-05.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 30,
+        "column": 13,
+        "message": "reconcile can only assign status fields"
+      }
+    },
+    {
+      "id": "T-01",
+      "category": "type",
+      "status": "semantic",
+      "invalid": "invalid/T-01.kbi",
+      "valid": "valid/T-01.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 20,
+        "column": 24,
+        "message": "expression has type \"string\", want \"int\""
+      }
+    },
+    {
+      "id": "T-02",
+      "category": "type",
+      "status": "semantic",
+      "invalid": "invalid/T-02.kbi",
+      "valid": "valid/T-02.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 19,
+        "column": 21,
+        "message": "expression has type \"int\", want \"string\""
+      }
+    },
+    {
+      "id": "T-03",
+      "category": "type",
+      "status": "semantic",
+      "invalid": "invalid/T-03.kbi",
+      "valid": "valid/T-03.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 29,
+        "column": 14,
+        "message": "reconcile condition must be a reconcile-time bool"
+      }
+    },
+    {
+      "id": "T-04",
+      "category": "type",
+      "status": "semantic",
+      "invalid": "invalid/T-04.kbi",
+      "valid": "valid/T-04.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 24,
+        "column": 22,
+        "message": "service target must reference a deployment"
+      }
+    },
+    {
+      "id": "V-01",
+      "category": "constraint",
+      "status": "semantic",
+      "invalid": "invalid/V-01.kbi",
+      "valid": "valid/V-01.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 9,
+        "column": 35,
+        "message": "default for spec field \"replicas\" has type \"string\", want \"int\""
+      }
+    },
+    {
+      "id": "V-02",
+      "category": "constraint",
+      "status": "semantic",
+      "invalid": "invalid/V-02.kbi",
+      "valid": "valid/V-02.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 9,
+        "column": 37,
+        "message": "range lower bound must not exceed upper bound"
+      }
+    },
+    {
+      "id": "V-03",
+      "category": "constraint",
+      "status": "semantic",
+      "invalid": "invalid/V-03.kbi",
+      "valid": "valid/V-03.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 9,
+        "column": 35,
+        "message": "default for spec field \"replicas\" is outside its range"
+      }
+    },
+    {
+      "id": "V-04",
+      "category": "constraint",
+      "status": "semantic",
+      "invalid": "invalid/V-04.kbi",
+      "valid": "valid/V-04.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 9,
+        "column": 25,
+        "message": "spec field \"replicas\" cannot be required and defaulted"
+      }
+    },
+    {
+      "id": "V-05",
+      "category": "constraint",
+      "status": "semantic",
+      "invalid": "invalid/V-05.kbi",
+      "valid": "valid/V-05.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 25,
+        "column": 20,
+        "message": "integer value 0 is outside allowed range 1..65535"
+      }
+    }
+  ],
+  "regressions": [
+    {
+      "id": "observed-service-port",
+      "category": "provenance",
+      "status": "regression",
+      "invalid": "invalid/observed-service-port.kbi",
+      "valid": "valid/observed-service-port.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 25,
+        "column": 20,
+        "message": "observed value cannot define desired state"
+      }
+    },
+    {
+      "id": "observed-container-port",
+      "category": "provenance",
+      "status": "regression",
+      "invalid": "invalid/observed-container-port.kbi",
+      "valid": "valid/observed-container-port.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 21,
+        "column": 29,
+        "message": "observed value cannot define desired state"
+      }
+    },
+    {
+      "id": "unknown-spec-field",
+      "category": "reference",
+      "status": "regression",
+      "invalid": "invalid/unknown-spec-field.kbi",
+      "valid": "valid/unknown-spec-field.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 20,
+        "column": 29,
+        "message": "unknown spec field \"unknown\""
+      }
+    },
+    {
+      "id": "unknown-observable",
+      "category": "reference",
+      "status": "regression",
+      "invalid": "invalid/unknown-observable.kbi",
+      "valid": "valid/unknown-observable.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 29,
+        "column": 37,
+        "message": "unknown deployment observable \"unknown\""
+      }
+    },
+    {
+      "id": "resource-name-collision",
+      "category": "name",
+      "status": "regression",
+      "invalid": "invalid/resource-name-collision.kbi",
+      "valid": "valid/resource-name-collision.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 23,
+        "column": 20,
+        "message": "resources \"application\" and \"Application\" collide after Kubernetes name normalization"
+      }
+    },
+    {
+      "id": "status-type-mismatch",
+      "category": "type",
+      "status": "regression",
+      "invalid": "invalid/status-type-mismatch.kbi",
+      "valid": "valid/status-type-mismatch.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 30,
+        "column": 28,
+        "message": "status field \"phase\" has type \"string\", cannot assign \"int\""
+      }
+    },
+    {
+      "id": "empty-otherwise",
+      "category": "status",
+      "status": "regression",
+      "invalid": "invalid/empty-otherwise.kbi",
+      "valid": "valid/empty-otherwise.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 33,
+        "column": 9,
+        "message": "status field \"phase\" is not assigned on every reconcile path"
+      }
+    },
+    {
+      "id": "missing-reconcile",
+      "category": "status",
+      "status": "regression",
+      "invalid": "invalid/missing-reconcile.kbi",
+      "valid": "valid/missing-reconcile.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 14,
+        "column": 9,
+        "message": "status field \"phase\" is not assigned on every reconcile path"
+      }
+    },
+    {
+      "id": "duplicate-status-assignment",
+      "category": "status",
+      "status": "regression",
+      "invalid": "invalid/duplicate-status-assignment.kbi",
+      "valid": "valid/duplicate-status-assignment.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 31,
+        "column": 20,
+        "message": "status field \"phase\" is assigned more than once"
+      }
+    },
+    {
+      "id": "integer-overflow",
+      "category": "literal",
+      "status": "regression",
+      "invalid": "invalid/integer-overflow.kbi",
+      "valid": "valid/integer-overflow.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 9,
+        "column": 35,
+        "message": "integer \"2147483648\" is outside the int32 range"
+      }
+    },
+    {
+      "id": "service-port-too-high",
+      "category": "constraint",
+      "status": "regression",
+      "invalid": "invalid/service-port-too-high.kbi",
+      "valid": "valid/service-port-too-high.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 25,
+        "column": 20,
+        "message": "integer value 65536 is outside allowed range 1..65535"
+      }
+    },
+    {
+      "id": "container-port-zero",
+      "category": "constraint",
+      "status": "regression",
+      "invalid": "invalid/container-port-zero.kbi",
+      "valid": "valid/container-port-zero.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 21,
+        "column": 29,
+        "message": "integer value 0 is outside allowed range 1..65535"
+      }
+    },
+    {
+      "id": "negative-replicas",
+      "category": "constraint",
+      "status": "regression",
+      "invalid": "invalid/negative-replicas.kbi",
+      "valid": "valid/negative-replicas.kbi",
+      "diagnostic": {
+        "phase": "semantic",
+        "line": 20,
+        "column": 24,
+        "message": "integer value -1 is outside allowed range 0..2147483647"
+      }
+    },
+    {
+      "id": "invalid-range-separator",
+      "category": "syntax",
+      "status": "regression",
+      "invalid": "invalid/invalid-range-separator.kbi",
+      "valid": "valid/invalid-range-separator.kbi",
+      "diagnostic": {
+        "phase": "lexical",
+        "line": 9,
+        "column": 46,
+        "message": "invalid range separator \"...\"; expected \"..\""
+      }
+    },
+    {
+      "id": "missing-spec-brace",
+      "category": "syntax",
+      "status": "regression",
+      "invalid": "invalid/missing-spec-brace.kbi",
+      "valid": "valid/missing-spec-brace.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 12,
+        "column": 5,
+        "message": "expected a field declaration or \"}\" to close spec section, got \"status\""
+      }
+    },
+    {
+      "id": "missing-final-brace",
+      "category": "syntax",
+      "status": "regression",
+      "invalid": "invalid/missing-final-brace.kbi",
+      "valid": "valid/missing-final-brace.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 38,
+        "column": 1,
+        "message": "expected a program section or \"}\" to close operator, got end of file"
+      }
+    },
+    {
+      "id": "unexpected-character",
+      "category": "lexical",
+      "status": "regression",
+      "invalid": "invalid/unexpected-character.kbi",
+      "valid": "valid/unexpected-character.kbi",
+      "diagnostic": {
+        "phase": "lexical",
+        "line": 8,
+        "column": 9,
+        "message": "unexpected character '@'"
+      }
+    },
+    {
+      "id": "unterminated-comment",
+      "category": "lexical",
+      "status": "regression",
+      "invalid": "invalid/unterminated-comment.kbi",
+      "valid": "valid/unterminated-comment.kbi",
+      "diagnostic": {
+        "phase": "lexical",
+        "line": 39,
+        "column": 1,
+        "message": "unterminated block comment"
+      }
+    },
+    {
+      "id": "missing-api-version",
+      "category": "syntax",
+      "status": "regression",
+      "invalid": "invalid/missing-api-version.kbi",
+      "valid": "valid/missing-api-version.kbi",
+      "diagnostic": {
+        "phase": "syntax",
+        "line": 5,
+        "column": 5,
+        "message": "missing required api property \"version\""
+      }
+    }
+  ]
+}

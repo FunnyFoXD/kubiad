@@ -1,10 +1,12 @@
 package parser
 
 import (
-	"fmt"
+	"math"
+	"sort"
 	"strings"
 
 	"github.com/FunnyFoXD/kubiad/internal/ir"
+	"github.com/FunnyFoXD/kubiad/internal/naming"
 )
 
 func lower(file sourceFile) (ir.Program, error) {
@@ -55,7 +57,7 @@ func lower(file sourceFile) (ir.Program, error) {
 	}
 	program.Reconcile = reconcile
 	if err := program.Validate(); err != nil {
-		return ir.Program{}, fmt.Errorf("invalid operator: %w", err)
+		return ir.Program{}, problem(file.name.span, "invalid operator: %v", err)
 	}
 	return program, nil
 }
@@ -143,11 +145,17 @@ type resourceDeclarations struct{ deployments map[string]resourceDecl }
 func declareResources(resources []resourceDecl) (resourceDeclarations, error) {
 	result := resourceDeclarations{deployments: map[string]resourceDecl{}}
 	names := map[string]token{}
+	normalizedNames := map[string]token{}
 	for _, resource := range resources {
 		if previous, exists := names[resource.name.text]; exists {
 			return resourceDeclarations{}, problem(resource.name.span, "resources %q and %q use the same name", previous.text, resource.name.text)
 		}
 		names[resource.name.text] = resource.name
+		key := resource.kind.text + ":" + naming.KubernetesPart(resource.name.text)
+		if previous, exists := normalizedNames[key]; exists {
+			return resourceDeclarations{}, problem(resource.name.span, "resources %q and %q collide after Kubernetes name normalization", previous.text, resource.name.text)
+		}
+		normalizedNames[key] = resource.name
 		if resource.kind.text == "deployment" {
 			result.deployments[resource.name.text] = resource
 		}
@@ -174,13 +182,13 @@ func lowerDeployments(resources []resourceDecl, spec map[string]ir.SpecField, de
 		if err != nil {
 			return nil, nil, err
 		}
-		loweredReplicas, err := lowerDesired(replicas, ir.IntType, spec, declarations)
+		loweredReplicas, err := lowerDesiredInteger(replicas, spec, declarations, 0, math.MaxInt32)
 		if err != nil {
 			return nil, nil, err
 		}
 		deployment := ir.Deployment{ID: deploymentID(resource.name.text), Name: resource.name.text, Image: loweredImage, Replicas: loweredReplicas, Source: resource.span}
 		if port, exists := resource.properties["containerPort"]; exists {
-			loweredPort, err := lowerDesired(port, ir.IntType, spec, declarations)
+			loweredPort, err := lowerDesiredInteger(port, spec, declarations, 1, 65535)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -216,7 +224,7 @@ func lowerServices(resources []resourceDecl, spec map[string]ir.SpecField, deplo
 		if !exists {
 			return nil, problem(resource.span, "service %q is missing port", resource.name.text)
 		}
-		loweredPort, err := lowerDesired(port, ir.IntType, spec, declarations)
+		loweredPort, err := lowerDesiredInteger(port, spec, declarations, 1, 65535)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +243,7 @@ func lowerReconcile(section reconcileSection, spec map[string]ir.SpecField, stat
 		if condition.Type != ir.BoolType || condition.BindingTime != ir.ReconcileTime {
 			return ir.Reconcile{}, problem(rule.condition.span, "reconcile condition must be a reconcile-time bool")
 		}
-		assignments, err := lowerAssignments(rule.assignments, spec, status, deployments)
+		assignments, err := lowerAssignments(rule.assignments, spec, status, deployments, rule.span)
 		if err != nil {
 			return ir.Reconcile{}, err
 		}
@@ -245,16 +253,20 @@ func lowerReconcile(section reconcileSection, spec map[string]ir.SpecField, stat
 		return ir.Reconcile{}, problem(section.rules[0].span, "reconcile with when blocks requires otherwise")
 	}
 	if section.otherwise != nil {
-		assignments, err := lowerAssignments(section.otherwise.assignments, spec, status, deployments)
+		assignments, err := lowerAssignments(section.otherwise.assignments, spec, status, deployments, section.otherwise.span)
 		if err != nil {
 			return ir.Reconcile{}, err
 		}
 		result.Otherwise = &ir.ReconcileBlock{Assignments: assignments, Source: section.otherwise.span}
+	} else if len(section.rules) == 0 {
+		if _, err := lowerAssignments(nil, spec, status, deployments, ir.SourceSpan{}); err != nil {
+			return ir.Reconcile{}, err
+		}
 	}
 	return result, nil
 }
 
-func lowerAssignments(assignments []statusAssignment, spec map[string]ir.SpecField, status map[string]ir.StatusField, deployments map[string]ir.Deployment) ([]ir.StatusAssignment, error) {
+func lowerAssignments(assignments []statusAssignment, spec map[string]ir.SpecField, status map[string]ir.StatusField, deployments map[string]ir.Deployment, block ir.SourceSpan) ([]ir.StatusAssignment, error) {
 	result := make([]ir.StatusAssignment, 0, len(assignments))
 	assigned := map[string]bool{}
 	for _, assignment := range assignments {
@@ -275,10 +287,29 @@ func lowerAssignments(assignments []statusAssignment, spec map[string]ir.SpecFie
 		result = append(result, ir.StatusAssignment{TargetFieldID: field.ID, Value: value, Source: assignment.span})
 		assigned[assignment.field.text] = true
 	}
+	names := make([]string, 0, len(status))
 	for name := range status {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		if !assigned[name] {
-			return nil, problem(assignmentsSpan(assignments), "status field %q is not assigned on every reconcile path", name)
+			if block.File == "" {
+				block = status[name].Source
+			}
+			return nil, problem(block, "status field %q is not assigned on every reconcile path", name)
 		}
+	}
+	return result, nil
+}
+
+func lowerDesiredInteger(value expression, spec map[string]ir.SpecField, declarations map[string]resourceDecl, minimum, maximum int32) (ir.Expression, error) {
+	result, err := lowerDesired(value, ir.IntType, spec, declarations)
+	if err != nil {
+		return ir.Expression{}, err
+	}
+	if result.Kind == ir.IntConstantExpression && (result.IntValue < minimum || result.IntValue > maximum) {
+		return ir.Expression{}, problem(value.span, "integer value %d is outside allowed range %d..%d", result.IntValue, minimum, maximum)
 	}
 	return result, nil
 }
@@ -370,13 +401,6 @@ func lowerType(value token) (ir.Type, error) {
 	default:
 		return "", problem(value.span, "unknown type %q", value.text)
 	}
-}
-
-func assignmentsSpan(assignments []statusAssignment) ir.SourceSpan {
-	if len(assignments) > 0 {
-		return assignments[0].span
-	}
-	return ir.SourceSpan{}
 }
 
 func specID(name string) ir.FieldID          { return ir.FieldID("spec:" + name) }

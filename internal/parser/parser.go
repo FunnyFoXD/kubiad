@@ -13,14 +13,18 @@ import (
 func Parse(filename string, source []byte) (ir.Program, error) {
 	tokens, err := lex(filename, source)
 	if err != nil {
-		return ir.Program{}, err
+		return ir.Program{}, inPhase(err, LexicalPhase)
 	}
 	parser := syntaxParser{tokens: tokens}
 	file, err := parser.parseSource()
 	if err != nil {
-		return ir.Program{}, err
+		return ir.Program{}, inPhase(err, SyntaxPhase)
 	}
-	return lower(file)
+	program, err := lower(file)
+	if err != nil {
+		return ir.Program{}, inPhase(err, SemanticPhase)
+	}
+	return program, nil
 }
 
 // ParseFile reads and parses a Kubiad source file
@@ -56,7 +60,7 @@ func (p *syntaxParser) parseSource() (sourceFile, error) {
 		section := p.current()
 		position, ok := order[section.text]
 		if !ok {
-			return sourceFile{}, problem(section.span, "expected a program section, got %q", section.text)
+			return sourceFile{}, p.blockProblem("operator", "a program section")
 		}
 		if seen[section.text] {
 			return sourceFile{}, problem(section.span, "duplicate %s section", section.text)
@@ -72,9 +76,9 @@ func (p *syntaxParser) parseSource() (sourceFile, error) {
 		case "api":
 			file.api, err = p.parseAPI()
 		case "spec":
-			file.spec, err = p.parseFields()
+			file.spec, err = p.parseFields("spec")
 		case "status":
-			file.status, err = p.parseFields()
+			file.status, err = p.parseFields("status")
 		case "resources":
 			file.resources, err = p.parseResources()
 		case "reconcile":
@@ -102,7 +106,7 @@ func (p *syntaxParser) parseAPI() (apiSection, error) {
 	if _, err := p.expectSymbol("{"); err != nil {
 		return apiSection{}, err
 	}
-	section := apiSection{values: map[string]literal{}, spans: map[string]ir.SourceSpan{}}
+	section := apiSection{values: map[string]literal{}}
 	for !p.atSymbol("}") {
 		property, err := p.expectIdentifier()
 		if err != nil {
@@ -117,33 +121,36 @@ func (p *syntaxParser) parseAPI() (apiSection, error) {
 		if _, err := p.expectSymbol("="); err != nil {
 			return apiSection{}, err
 		}
+		if p.current().kind != stringToken {
+			return apiSection{}, problem(p.current().span, "api.%s must be a compile-time string literal", property.text)
+		}
 		value, err := p.parseLiteral()
 		if err != nil {
 			return apiSection{}, err
 		}
-		if value.kind != stringLiteral {
-			return apiSection{}, problem(value.span, "api.%s must be a string", property.text)
-		}
 		section.values[property.text] = value
-		section.spans[property.text] = property.span
 	}
-	if _, err := p.expectSymbol("}"); err != nil {
+	closing, err := p.expectSymbol("}")
+	if err != nil {
 		return apiSection{}, err
 	}
 	for _, required := range []string{"group", "version", "kind"} {
 		if _, ok := section.values[required]; !ok {
-			return apiSection{}, problem(section.spansOrEnd(p.current().span), "missing required api property %q", required)
+			return apiSection{}, problem(closing.span, "missing required api property %q", required)
 		}
 	}
 	return section, nil
 }
 
-func (p *syntaxParser) parseFields() ([]fieldDecl, error) {
+func (p *syntaxParser) parseFields(section string) ([]fieldDecl, error) {
 	if _, err := p.expectSymbol("{"); err != nil {
 		return nil, err
 	}
 	var fields []fieldDecl
 	for !p.atSymbol("}") {
+		if p.current().kind != identifierToken || reservedWords[p.current().text] {
+			return nil, p.blockProblem(section+" section", "a field declaration")
+		}
 		name, err := p.expectIdentifier()
 		if err != nil {
 			return nil, err
@@ -174,6 +181,9 @@ func (p *syntaxParser) parseFields() ([]fieldDecl, error) {
 					if _, err := p.expectSymbol("="); err != nil {
 						return nil, err
 					}
+					if !p.atLiteral() {
+						return nil, problem(p.current().span, "default must be a compile-time literal")
+					}
 					value, err := p.parseLiteral()
 					if err != nil {
 						return nil, err
@@ -183,14 +193,14 @@ func (p *syntaxParser) parseFields() ([]fieldDecl, error) {
 					if _, err := p.expectSymbol("="); err != nil {
 						return nil, err
 					}
-					minimum, err := p.parseInteger()
+					minimum, err := p.parseStaticInteger("range lower bound")
 					if err != nil {
 						return nil, err
 					}
 					if _, err := p.expectSymbol(".."); err != nil {
 						return nil, err
 					}
-					maximum, err := p.parseInteger()
+					maximum, err := p.parseStaticInteger("range upper bound")
 					if err != nil {
 						return nil, err
 					}
@@ -215,6 +225,9 @@ func (p *syntaxParser) parseResources() ([]resourceDecl, error) {
 	}
 	var resources []resourceDecl
 	for !p.atSymbol("}") {
+		if p.current().kind == endToken {
+			return nil, p.blockProblem("resources section", "a resource declaration")
+		}
 		kind, err := p.expectWordOneOf("deployment", "service")
 		if err != nil {
 			return nil, err
@@ -228,6 +241,9 @@ func (p *syntaxParser) parseResources() ([]resourceDecl, error) {
 		}
 		resource := resourceDecl{kind: kind, name: name, properties: map[string]expression{}, span: kind.span}
 		for !p.atSymbol("}") {
+			if p.current().kind != identifierToken || reservedWords[p.current().text] {
+				return nil, p.blockProblem(kind.text+" "+name.text, "a resource property")
+			}
 			property, err := p.expectIdentifier()
 			if err != nil {
 				return nil, err
@@ -274,7 +290,7 @@ func (p *syntaxParser) parseReconcile() (reconcileSection, error) {
 			if err != nil {
 				return reconcileSection{}, err
 			}
-			assignments, err := p.parseAssignments()
+			assignments, err := p.parseAssignments("when block")
 			if err != nil {
 				return reconcileSection{}, err
 			}
@@ -286,14 +302,14 @@ func (p *syntaxParser) parseReconcile() (reconcileSection, error) {
 				return reconcileSection{}, problem(keyword.span, "duplicate otherwise block")
 			}
 			p.advance()
-			assignments, err := p.parseAssignments()
+			assignments, err := p.parseAssignments("otherwise block")
 			if err != nil {
 				return reconcileSection{}, err
 			}
 			section.otherwise = &whenBlock{assignments: assignments, span: keyword.span}
 			continue
 		}
-		return reconcileSection{}, problem(keyword.span, "expected when or otherwise block")
+		return reconcileSection{}, p.blockProblem("reconcile section", "when or otherwise block")
 	}
 	if _, err := p.expectSymbol("}"); err != nil {
 		return reconcileSection{}, err
@@ -301,12 +317,18 @@ func (p *syntaxParser) parseReconcile() (reconcileSection, error) {
 	return section, nil
 }
 
-func (p *syntaxParser) parseAssignments() ([]statusAssignment, error) {
+func (p *syntaxParser) parseAssignments(block string) ([]statusAssignment, error) {
 	if _, err := p.expectSymbol("{"); err != nil {
 		return nil, err
 	}
 	var assignments []statusAssignment
 	for !p.atSymbol("}") {
+		if p.current().text == "spec" {
+			return nil, problem(p.current().span, "reconcile can only assign status fields")
+		}
+		if p.current().text != "status" {
+			return nil, p.blockProblem(block, "a status assignment")
+		}
 		start, err := p.expectWord("status")
 		if err != nil {
 			return nil, err
@@ -334,7 +356,7 @@ func (p *syntaxParser) parseAssignments() ([]statusAssignment, error) {
 }
 
 func (p *syntaxParser) parseExpression() (expression, error) {
-	if p.current().kind == stringToken || p.current().kind == integerToken || p.current().text == "true" || p.current().text == "false" {
+	if p.atLiteral() {
 		value, err := p.parseLiteral()
 		if err != nil {
 			return expression{}, err
@@ -353,6 +375,7 @@ func (p *syntaxParser) parseExpression() (expression, error) {
 		return expression{}, err
 	}
 	result := expression{prefix: prefix.text, name: name, span: prefix.span}
+	result.span.EndLine, result.span.EndColumn = name.span.EndLine, name.span.EndColumn
 	if p.atSymbol(".") {
 		p.advance()
 		property, err := p.expectIdentifier()
@@ -386,10 +409,10 @@ func (p *syntaxParser) parseLiteral() (literal, error) {
 	}
 }
 
-func (p *syntaxParser) parseInteger() (int32, error) {
+func (p *syntaxParser) parseStaticInteger(context string) (int32, error) {
 	value := p.current()
 	if value.kind != integerToken {
-		return 0, problem(value.span, "expected an integer")
+		return 0, problem(value.span, "%s must be a compile-time integer literal", context)
 	}
 	integer, err := parseInt32(value)
 	if err != nil {
@@ -407,6 +430,19 @@ func (p *syntaxParser) advance() {
 }
 func (p *syntaxParser) atSymbol(symbol string) bool {
 	return p.current().kind == symbolToken && p.current().text == symbol
+}
+
+func (p *syntaxParser) atLiteral() bool {
+	value := p.current()
+	return value.kind == stringToken || value.kind == integerToken || value.text == "true" || value.text == "false"
+}
+
+func (p *syntaxParser) blockProblem(block, item string) error {
+	got := fmt.Sprintf("%q", p.current().text)
+	if p.current().kind == endToken {
+		got = "end of file"
+	}
+	return problem(p.current().span, "expected %s or %q to close %s, got %s", item, "}", block, got)
 }
 
 func (p *syntaxParser) expectSymbol(symbol string) (token, error) {
@@ -447,13 +483,6 @@ func (p *syntaxParser) expectIdentifier() (token, error) {
 	}
 	p.advance()
 	return value, nil
-}
-
-func (section apiSection) spansOrEnd(fallback ir.SourceSpan) ir.SourceSpan {
-	for _, span := range section.spans {
-		return span
-	}
-	return fallback
 }
 
 func allowedProperty(kind, property string) bool {

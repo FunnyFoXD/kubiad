@@ -66,8 +66,13 @@ func lex(file string, source []byte) ([]token, error) {
 			}
 			tokens = append(tokens, lexer.token(stringToken, value, startLine, startColumn))
 		case character == '.' && lexer.peekNext() == '.':
-			lexer.advance()
-			lexer.advance()
+			start := lexer.offset
+			for lexer.peek() == '.' {
+				lexer.advance()
+			}
+			if lexer.offset-start != 2 {
+				return nil, problem(lexer.token(symbolToken, "", startLine, startColumn).span, "invalid range separator %q; expected %q", string(lexer.source[start:lexer.offset]), "..")
+			}
 			tokens = append(tokens, lexer.token(symbolToken, "..", startLine, startColumn))
 		case character == '{' || character == '}' || character == ':' || character == '=' || character == '.':
 			lexer.advance()

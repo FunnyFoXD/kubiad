@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/FunnyFoXD/kubiad/internal/ir"
+	"github.com/FunnyFoXD/kubiad/internal/naming"
 )
 
 func renderReconciler(program ir.Program) (string, error) {
@@ -177,12 +178,5 @@ func statusField(program ir.Program, id ir.FieldID) ir.StatusField {
 }
 
 func kubernetesNamePart(name string) string {
-	var output strings.Builder
-	for index, runeValue := range name {
-		if index > 0 && runeValue >= 'A' && runeValue <= 'Z' {
-			output.WriteByte('-')
-		}
-		output.WriteRune(runeValue)
-	}
-	return strings.ToLower(output.String())
+	return naming.KubernetesPart(name)
 }

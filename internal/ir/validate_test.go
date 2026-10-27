@@ -62,7 +62,7 @@ func TestValidateRejectsCorpusStaticCases(t *testing.T) {
 			contains: "observed value cannot define desired state",
 		},
 		{
-			name: "P-03 observed ready replicas define desired service port",
+			name: "observed ready replicas define desired service port",
 			mutate: func(program *Program) {
 				program.Services[0].Port = observableReference("deployment:application", "readyReplicas", IntType)
 			},
@@ -112,7 +112,7 @@ func TestValidateRejectsCorpusStaticCases(t *testing.T) {
 			contains: "targets deployment without a container port",
 		},
 		{
-			name: "R-06 duplicate deployment identifier",
+			name: "duplicate deployment identifier",
 			mutate: func(program *Program) {
 				program.Deployments = append(program.Deployments, program.Deployments[0])
 			},
@@ -126,7 +126,7 @@ func TestValidateRejectsCorpusStaticCases(t *testing.T) {
 			contains: "is not assigned on every reconcile path",
 		},
 		{
-			name: "S-03 branch assigns one status field twice",
+			name: "branch assigns one status field twice",
 			mutate: func(program *Program) {
 				assignment := program.Reconcile.Rules[0].Assignments[0]
 				program.Reconcile.Rules[0].Assignments = append(program.Reconcile.Rules[0].Assignments, assignment)

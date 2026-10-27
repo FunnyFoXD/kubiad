@@ -1,6 +1,9 @@
 package ir
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Validate checks the invariants required by generators
 func (p Program) Validate() error {
@@ -61,11 +64,11 @@ func (p Program) Validate() error {
 		if err := validateDesired(d.Image, StringType, spec, deployments); err != nil {
 			return fmt.Errorf("deployment %q image: %w", d.ID, err)
 		}
-		if err := validateDesired(d.Replicas, IntType, spec, deployments); err != nil {
+		if err := validateDesiredInteger(d.Replicas, spec, deployments, 0, math.MaxInt32); err != nil {
 			return fmt.Errorf("deployment %q replicas: %w", d.ID, err)
 		}
 		if d.ContainerPort != nil {
-			if err := validateDesired(*d.ContainerPort, IntType, spec, deployments); err != nil {
+			if err := validateDesiredInteger(*d.ContainerPort, spec, deployments, 1, 65535); err != nil {
 				return fmt.Errorf("deployment %q container port: %w", d.ID, err)
 			}
 		}
@@ -89,10 +92,10 @@ func (p Program) Validate() error {
 		if target.ContainerPort == nil {
 			return fmt.Errorf("service %q targets deployment without a container port", s.ID)
 		}
-		if err := validateDesired(s.Port, IntType, spec, deployments); err != nil {
+		if err := validateDesiredInteger(s.Port, spec, deployments, 1, 65535); err != nil {
 			return fmt.Errorf("service %q port: %w", s.ID, err)
 		}
-		if err := validateDesired(s.TargetPort, IntType, spec, deployments); err != nil {
+		if err := validateDesiredInteger(s.TargetPort, spec, deployments, 1, 65535); err != nil {
 			return fmt.Errorf("service %q target port: %w", s.ID, err)
 		}
 		serviceIDs[s.ID] = struct{}{}
@@ -115,6 +118,16 @@ func (p Program) Validate() error {
 		return validateAssignments(p.Reconcile.Otherwise.Assignments, status, spec, deployments)
 	}
 	return validateAssignments(nil, status, spec, deployments)
+}
+
+func validateDesiredInteger(e Expression, spec map[FieldID]SpecField, deployments map[ResourceID]Deployment, minimum, maximum int32) error {
+	if err := validateDesired(e, IntType, spec, deployments); err != nil {
+		return err
+	}
+	if e.Kind == IntConstantExpression && (e.IntValue < minimum || e.IntValue > maximum) {
+		return fmt.Errorf("integer value %d is outside allowed range %d..%d", e.IntValue, minimum, maximum)
+	}
+	return nil
 }
 
 func validateDesired(e Expression, expected Type, spec map[FieldID]SpecField, deployments map[ResourceID]Deployment) error {
