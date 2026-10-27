@@ -56,6 +56,16 @@ Parser fuzzing also checks deterministic diagnostics and valid IR for accepted i
 go test ./internal/parser -run '^$' -fuzz '^FuzzParse$' -fuzztime=20s -parallel=2
 ```
 
+## Generated operator integration tests
+
+The opt-in envtest suite parses all three source examples, generates standalone projects, and checks them against an isolated Kubernetes API with the generated RBAC. It covers CRD validation/defaulting, resource lifecycle, drift correction, status, zero replicas, and manager watches.
+
+```sh
+env KUBIAD_ENVTEST_DOWNLOAD=1 go test -tags=envtest ./internal/generator -run '^TestGeneratedEnvtest$' -count=1 -timeout=15m -v
+```
+
+See [integration test setup, limitations, and implementation references](docs/integration-tests.md). The ordinary `go test ./...` suite does not start a control plane.
+
 ## Generator
 
 The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:

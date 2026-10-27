@@ -18,6 +18,12 @@ rules:
     verbs:
       - update
   - apiGroups:
+      - apps.kubiad.dev
+    resources:
+      - webapplications/finalizers
+    verbs:
+      - update
+  - apiGroups:
       - apps
     resources:
       - deployments
@@ -28,7 +34,7 @@ rules:
       - update
       - watch
   - apiGroups:
-      - \"\"
+      - ""
     resources:
       - services
     verbs:

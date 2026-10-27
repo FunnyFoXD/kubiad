@@ -1,5 +1,10 @@
 # Frontend analysis corpus
 
+API-level lifecycle scenarios E-01 through E-06 are exercised separately by
+the [generated operator envtest suite](../../docs/integration-tests.md).
+They remain integration cases in this inventory and do not increase
+frontend semantic or structural coverage.
+
 `manifest.json` is the versioned inventory of 43 research scenarios and 19 additional frontend regression cases. Executable cases contain independent `.kbi` files under `invalid/` and `valid/`, with an expected diagnostic phase, message, line, and column for the invalid source. The valid counterpart checks for false rejection by the frontend; it does not promise that every accepted program fits the generator's current resource-count limits.
 
 These are synthetic minimal examples of language rules, not verbatim copies of production bugs. Additional regression examples are kept separate from the research cases and do not increase the reported research coverage.
