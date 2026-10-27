@@ -1,0 +1,17 @@
+package controller
+
+import (
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+func integrationImplementation() integrationAdapter {
+	return integrationAdapter{
+		object:   object,
+		register: func(*runtime.Scheme) error { return nil },
+		reconciler: func(kube client.Client, scheme *runtime.Scheme) integrationController {
+			return &Reconciler{Client: kube, Scheme: scheme}
+		},
+		hasBindingManifests: true,
+	}
+}

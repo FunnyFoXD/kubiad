@@ -37,6 +37,7 @@ type WebApplicationReconciler struct {
 
 // +kubebuilder:rbac:groups=apps.kubiad.dev,resources=webapplications,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps.kubiad.dev,resources=webapplications/status,verbs=update
+// +kubebuilder:rbac:groups=apps.kubiad.dev,resources=webapplications/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 

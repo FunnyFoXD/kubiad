@@ -20,6 +20,8 @@ go test ./...
 go build ./...
 ```
 
+The root `go test ./...` suite also runs unit tests, vet, and build checks in temporary copies of all three baseline modules.
+
 ## Generator golden tests
 
 The expected outputs are stored in [`testdata/codegen`](testdata/codegen). The regular test suite compares every generated file with its operator snapshot and builds a temporary copy of each project.
@@ -56,12 +58,12 @@ Parser fuzzing also checks deterministic diagnostics and valid IR for accepted i
 go test ./internal/parser -run '^$' -fuzz '^FuzzParse$' -fuzztime=20s -parallel=2
 ```
 
-## Generated operator integration tests
+## Operator integration tests
 
-The opt-in envtest suite parses all three source examples, generates standalone projects, and checks them against an isolated Kubernetes API with the generated RBAC. It covers CRD validation/defaulting, resource lifecycle, drift correction, status, zero replicas, and manager watches.
+The opt-in envtest suite applies one shared behavioral contract to all three generated operators and their hand-written Kubebuilder baselines. It covers CRD validation/defaulting, each implementation's RBAC, resource lifecycle, drift correction, status, zero-to-three scaling, instance isolation, and manager watches against an isolated Kubernetes API.
 
 ```sh
-env KUBIAD_ENVTEST_DOWNLOAD=1 go test -tags=envtest ./internal/generator -run '^TestGeneratedEnvtest$' -count=1 -timeout=15m -v
+env KUBIAD_ENVTEST_DOWNLOAD=1 go test -tags=envtest ./internal/generator -run '^(TestGeneratedEnvtest|TestKubebuilderEnvtest)$' -count=1 -timeout=15m -v
 ```
 
 See [integration test setup, limitations, and implementation references](docs/integration-tests.md). The ordinary `go test ./...` suite does not start a control plane.

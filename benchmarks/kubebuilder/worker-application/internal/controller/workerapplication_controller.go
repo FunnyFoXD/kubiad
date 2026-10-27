@@ -35,6 +35,7 @@ type WorkerApplicationReconciler struct {
 
 // +kubebuilder:rbac:groups=apps.kubiad.dev,resources=workerapplications,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps.kubiad.dev,resources=workerapplications/status,verbs=update
+// +kubebuilder:rbac:groups=apps.kubiad.dev,resources=workerapplications/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 
 // Reconcile creates and maintains the Deployment and status for a WorkerApplication
