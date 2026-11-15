@@ -68,6 +68,16 @@ env KUBIAD_ENVTEST_DOWNLOAD=1 go test -tags=envtest ./internal/generator -run '^
 
 See [integration test setup, limitations, and implementation references](docs/integration-tests.md). The ordinary `go test ./...` suite does not start a control plane.
 
+The separate kind smoke suite builds the CLI and generated Dockerfiles, then
+tests real Pods, Service routing, scaling, manager restart, owned-resource
+recreation, and garbage collection in disposable clusters:
+
+```sh
+env KIND_EXPERIMENTAL_PROVIDER=docker KUBIAD_KIND_TEST=1 go test -tags=kind ./internal/generator -run '^TestGeneratedKind$' -count=1 -timeout=45m -v
+```
+
+See [cluster test prerequisites, isolation, and references](docs/kind-tests.md).
+
 ## Generator
 
 The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:
@@ -86,8 +96,12 @@ go build ./...
 The generated project includes a container build recipe and deploy manifests. Replace `controller:latest` with a published image, then apply the kustomize entry point:
 
 ```sh
-kustomize build config/default | kubectl apply -f -
+kubectl apply -k config/default
 ```
+
+The default Kustomize configuration places the manager and its ServiceAccount
+in `kubiad-system`, matching the generated role binding. Use `-k` for the
+Kustomize directory; `-f` does not render its `kustomization.yaml`.
 
 The current generator supports one Deployment and an optional Service. Reconcile rules evaluate their declared boolean conditions in source order and execute the first matching branch, followed by `otherwise` if none match. An unconditional `otherwise` block and operators without status fields or reconcile rules are also supported.
 

@@ -8,10 +8,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"example.test/workerapplication/internal/controller"
 )
 
 func main() {
+	ctrl.SetLogger(zap.New())
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil { fail(err) }
 	if err := appsv1.AddToScheme(scheme); err != nil { fail(err) }

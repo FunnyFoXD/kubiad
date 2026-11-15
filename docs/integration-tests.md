@@ -169,6 +169,10 @@ They do not replace kind end-to-end testing, crash recovery, stale-cache
 fault injection, arbitrary controller interactions, or convergence proofs.
 The research corpus's static coverage count is not increased by these tests.
 
+The separate [kind smoke suite](kind-tests.md) exercises generated container
+startup, mounted ServiceAccount authentication, actual Pod readiness,
+Service routing, resource recreation, manager restart, and garbage collection.
+
 ## Regressions exposed by this suite
 
 Initial generated-operator runs exposed three defects:
