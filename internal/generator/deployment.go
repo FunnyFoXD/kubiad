@@ -31,7 +31,7 @@ func renderManagerDeployment() string {
 }
 
 func renderDefaultKustomization(_ ir.Program) string {
-	return "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - namespace.yaml\n  - ../crd\n  - ../rbac\n  - ../manager\n"
+	return "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: kubiad-system\nresources:\n  - namespace.yaml\n  - ../crd\n  - ../rbac\n  - ../manager\n"
 }
 
 func renderNamespace() string {
