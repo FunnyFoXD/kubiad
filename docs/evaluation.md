@@ -113,6 +113,10 @@ benchmarks. Fixed tool versions and revision metadata make runs traceable;
 the hosted runner image and generated container base-image tags can change.
 This is not a fully hermetic build or a completed comparative experiment.
 
+The [RBAC evaluation contract](rbac-evaluation.md) defines a separate
+permission-set metric. Its six per-profile RBAC_EVIDENCE records are retained
+in the envtest logs; they are not frontend detections or performance results.
+
 ## Implementation references
 
 The runner and report format are project-specific implementations. The

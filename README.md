@@ -92,6 +92,11 @@ go run ./cmd/kubiad-evaluate --suite unit
 See [report commands, artifacts, interpretation, and references](docs/evaluation.md).
 Static corpus classifications and runtime integration results remain separate.
 
+For a short source/error/build/cluster walkthrough, use the
+[prototype demonstration](docs/prototype-demo.md). The
+[RBAC evaluation](docs/rbac-evaluation.md) records the reviewed permission
+sets and their comparison with the manual operators.
+
 ## Generator
 
 The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:

@@ -2,10 +2,13 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -258,6 +261,42 @@ func (e *integrationEnvironment) checkSchema(t *testing.T) {
 }
 
 func (e *integrationEnvironment) checkRBAC(t *testing.T) {
+	role := &rbacv1.ClusterRole{}
+	readIntegrationManifest(t, "role.yaml", role)
+	granted, err := rolePermissionSet(role.Rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := integrationObject().GetKind()
+	plural := strings.ToLower(primary) + "s"
+	required := map[string]bool{}
+	add := func(group, resource string, verbs ...string) {
+		for _, verb := range verbs {
+			required[group+"/"+resource+":"+verb] = true
+		}
+	}
+	add("apps.kubiad.dev", plural, "get", "list", "watch")
+	add("apps.kubiad.dev", plural+"/status", "update")
+	add("apps.kubiad.dev", plural+"/finalizers", "update")
+	add("apps", "deployments", "create", "get", "list", "update", "watch")
+	if e.hasService {
+		add("", "services", "create", "get", "list", "update", "watch")
+	}
+	missing, extra := permissionDifference(required, granted), permissionDifference(granted, required)
+	metric, err := json.Marshal(struct {
+		Kind     string   `json:"kind"`
+		Required int      `json:"required"`
+		Granted  int      `json:"granted"`
+		Missing  []string `json:"missing"`
+		Extra    []string `json:"extra"`
+	}{primary, len(required), len(granted), missing, extra})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("RBAC_EVIDENCE %s", metric)
+	if len(missing) != 0 || len(extra) != 0 {
+		t.Fatalf("role differs from reviewed operation matrix: missing=%v extra=%v", missing, extra)
+	}
 	ctx := t.Context()
 	application := e.application("permissions")
 	if err := e.admin.Create(ctx, application); err != nil {
@@ -277,6 +316,64 @@ func (e *integrationEnvironment) checkRBAC(t *testing.T) {
 	mustBeForbidden(t, e.limited.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "operator-tests", Name: "missing"}}))
 	if !e.hasService {
 		mustBeForbidden(t, e.limited.List(ctx, &corev1.ServiceList{}, client.InNamespace("operator-tests")))
+	}
+}
+
+// rolePermissionSet expands resource rules into unique group/resource/verb tuples
+func rolePermissionSet(rules []rbacv1.PolicyRule) (map[string]bool, error) {
+	permissions := map[string]bool{}
+	for _, rule := range rules {
+		if len(rule.NonResourceURLs) != 0 || len(rule.ResourceNames) != 0 || len(rule.APIGroups) == 0 || len(rule.Resources) == 0 || len(rule.Verbs) == 0 {
+			return nil, fmt.Errorf("rule is outside the unrestricted named-resource inventory model: %#v", rule)
+		}
+		for _, group := range rule.APIGroups {
+			for _, resource := range rule.Resources {
+				for _, verb := range rule.Verbs {
+					if strings.Contains(group+resource+verb, "*") {
+						return nil, fmt.Errorf("wildcard permission cannot be counted as a concrete tuple")
+					}
+					permissions[group+"/"+resource+":"+verb] = true
+				}
+			}
+		}
+	}
+	return permissions, nil
+}
+
+func permissionDifference(left, right map[string]bool) []string {
+	result := []string{}
+	for permission := range left {
+		if !right[permission] {
+			result = append(result, permission)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func TestEnvtestRBACInventory(t *testing.T) {
+	rules := []rbacv1.PolicyRule{{APIGroups: []string{"apps"}, Resources: []string{"deployments", "replicasets"}, Verbs: []string{"get", "list", "get"}}}
+	actual, err := rolePermissionSet(rules)
+	if err != nil || len(actual) != 4 {
+		t.Fatalf("cross-product/deduplication: %v, %v", actual, err)
+	}
+	required := map[string]bool{"apps/deployments:get": true, "apps/deployments:update": true}
+	if got := permissionDifference(required, actual); !reflect.DeepEqual(got, []string{"apps/deployments:update"}) {
+		t.Fatalf("missing permissions = %v", got)
+	}
+	if got := permissionDifference(actual, required); len(got) != 3 {
+		t.Fatalf("extra permissions = %v", got)
+	}
+	for _, rule := range []rbacv1.PolicyRule{
+		{APIGroups: []string{"*"}, Resources: []string{"deployments"}, Verbs: []string{"get"}},
+		{APIGroups: []string{""}, Resources: []string{"*"}, Verbs: []string{"get"}},
+		{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"*"}},
+		{NonResourceURLs: []string{"*"}, Verbs: []string{"get"}},
+		{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, ResourceNames: []string{"one"}, Verbs: []string{"get"}},
+	} {
+		if _, err := rolePermissionSet([]rbacv1.PolicyRule{rule}); err == nil {
+			t.Fatalf("unsupported rule accepted: %#v", rule)
+		}
 	}
 }
 
