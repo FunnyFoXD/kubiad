@@ -42,15 +42,19 @@ The remaining commands work in either shell:
 ```sh
 go run ./cmd/kubiad build examples/worker-application.kbi --output "$DEMO_DIR/worker" --module example.test/workerapplication
 docker build -t kubiad-worker:demo "$DEMO_DIR/worker"
-docker pull registry.k8s.io/pause:3.10
 kind create cluster --name kubiad-demo --image kindest/node:v1.35.0 --kubeconfig "$DEMO_DIR/kubeconfig" --wait 180s
-kind load docker-image --name kubiad-demo kubiad-worker:demo registry.k8s.io/pause:3.10
+kind load docker-image --name kubiad-demo kubiad-worker:demo
 ```
 
 `--output` chooses where project files are written. `--module` sets the Go
 module/import path inside that standalone project. Docker builds the actual
 generated manager; kind loads the images locally rather than pulling the
 unpublished manager tag from a registry.
+
+The kubelet pulls the public pause workload directly from registry.k8s.io,
+so the node needs network access for its first launch. Only the locally built
+manager is imported; importing a pulled multi-platform image can fail with
+some Docker/containerd image-store combinations.
 
 ## Install and show reconciliation
 

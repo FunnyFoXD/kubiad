@@ -284,11 +284,11 @@ func (e *integrationEnvironment) checkRBAC(t *testing.T) {
 	}
 	missing, extra := permissionDifference(required, granted), permissionDifference(granted, required)
 	metric, err := json.Marshal(struct {
-		Kind string `json:"kind"`
-		Required int `json:"required"`
-		Granted int `json:"granted"`
-		Missing []string `json:"missing"`
-		Extra []string `json:"extra"`
+		Kind     string   `json:"kind"`
+		Required int      `json:"required"`
+		Granted  int      `json:"granted"`
+		Missing  []string `json:"missing"`
+		Extra    []string `json:"extra"`
 	}{primary, len(required), len(granted), missing, extra})
 	if err != nil {
 		t.Fatal(err)
