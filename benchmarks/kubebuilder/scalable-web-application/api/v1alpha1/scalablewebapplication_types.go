@@ -17,7 +17,7 @@ type ScalableWebApplicationSpec struct {
 	// +kubebuilder:default:=1
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=10
-	Replicas int32 `json:"replicas,omitempty"`
+	Replicas int32 `json:"replicas"`
 
 	// Port is the required application container and Service port
 	// +kubebuilder:validation:Required
@@ -46,7 +46,8 @@ type ScalableWebApplication struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ScalableWebApplicationSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Required
+	Spec   ScalableWebApplicationSpec   `json:"spec"`
 	Status ScalableWebApplicationStatus `json:"status,omitempty"`
 }
 

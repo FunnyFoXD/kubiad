@@ -18,6 +18,12 @@ rules:
     verbs:
       - update
   - apiGroups:
+      - apps.kubiad.dev
+    resources:
+      - scalablewebapplications/finalizers
+    verbs:
+      - update
+  - apiGroups:
       - apps
     resources:
       - deployments

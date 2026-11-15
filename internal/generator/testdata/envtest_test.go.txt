@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
@@ -25,6 +26,22 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+type integrationController interface {
+	Reconcile(context.Context, ctrl.Request) (ctrl.Result, error)
+	SetupWithManager(ctrl.Manager) error
+}
+
+type integrationAdapter struct {
+	object              func() *unstructured.Unstructured
+	register            func(*runtime.Scheme) error
+	reconciler          func(client.Client, *runtime.Scheme) integrationController
+	hasBindingManifests bool
+}
+
+var operatorUnderTest = integrationImplementation()
+
+func integrationObject() *unstructured.Unstructured { return operatorUnderTest.object() }
+
 type integrationEnvironment struct {
 	admin, limited           client.Client
 	config                   *rest.Config
@@ -33,15 +50,18 @@ type integrationEnvironment struct {
 	deploymentSuffix         string
 }
 
-func TestEnvtestGeneratedOperator(t *testing.T) {
+func TestEnvtestOperator(t *testing.T) {
 	environment := startIntegrationEnvironment(t)
 	if !t.Run("CRDSchemaAndSubresources", environment.checkSchema) {
 		return
 	}
-	if !t.Run("GeneratedRBAC", environment.checkRBAC) {
+	if !t.Run("RBAC", environment.checkRBAC) {
 		return
 	}
 	if !t.Run("Lifecycle", environment.checkLifecycle) {
+		return
+	}
+	if !t.Run("InstanceIsolation", environment.checkIsolation) {
 		return
 	}
 	t.Run("ManagerWatches", environment.checkManager)
@@ -88,6 +108,9 @@ func startIntegrationEnvironment(t *testing.T) *integrationEnvironment {
 			t.Fatal(err)
 		}
 	}
+	if err := operatorUnderTest.register(scheme); err != nil {
+		t.Fatal(err)
+	}
 	admin, err := client.New(config, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
@@ -99,24 +122,31 @@ func startIntegrationEnvironment(t *testing.T) *integrationEnvironment {
 			t.Fatal(err)
 		}
 	}
-	for name, resource := range map[string]client.Object{
-		"role.yaml":            &rbacv1.ClusterRole{},
-		"service_account.yaml": &corev1.ServiceAccount{},
-		"role_binding.yaml":    &rbacv1.ClusterRoleBinding{},
-	} {
-		data, err := os.ReadFile(filepath.Join("..", "..", "config", "rbac", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := yaml.UnmarshalStrict(data, resource); err != nil {
-			t.Fatalf("decode generated %s: %v", name, err)
-		}
-		if _, ok := resource.(*corev1.ServiceAccount); ok {
-			resource.SetNamespace("kubiad-system")
-		}
-		if err := admin.Create(ctx, resource); err != nil {
-			t.Fatalf("install generated %s: %v", name, err)
-		}
+	role := &rbacv1.ClusterRole{}
+	readIntegrationManifest(t, "role.yaml", role)
+	if err := admin.Create(ctx, role); err != nil {
+		t.Fatalf("install operator role: %v", err)
+	}
+	account := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "kubiad-controller-manager"}}
+	binding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "kubiad-manager-rolebinding"},
+		RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
+		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: account.Name, Namespace: "kubiad-system"}},
+	}
+	if operatorUnderTest.hasBindingManifests {
+		account = &corev1.ServiceAccount{}
+		binding = &rbacv1.ClusterRoleBinding{}
+		readIntegrationManifest(t, "service_account.yaml", account)
+		readIntegrationManifest(t, "role_binding.yaml", binding)
+	} else {
+		t.Log("using test-owned ServiceAccount and binding for the baseline's unchanged role")
+	}
+	account.Namespace = "kubiad-system"
+	if err := admin.Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.Create(ctx, binding); err != nil {
+		t.Fatal(err)
 	}
 	user, err := controlPlane.AddUser(envtest.User{
 		Name:   "system:serviceaccount:kubiad-system:kubiad-controller-manager",
@@ -129,7 +159,7 @@ func startIntegrationEnvironment(t *testing.T) *integrationEnvironment {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kind := object().GetKind()
+	kind := integrationObject().GetKind()
 	environment := &integrationEnvironment{
 		admin: admin, limited: limited, config: user.Config(), scheme: scheme,
 		hasService: kind != "WorkerApplication", requiredPort: kind == "ScalableWebApplication",
@@ -138,9 +168,9 @@ func startIntegrationEnvironment(t *testing.T) *integrationEnvironment {
 	if !environment.hasService {
 		environment.deploymentSuffix = "-worker"
 	}
-	eventually(t, "generated role becomes effective", func(ctx context.Context) error {
+	eventually(t, "operator role becomes effective", func(ctx context.Context) error {
 		list := &unstructured.UnstructuredList{}
-		gvk := object().GroupVersionKind()
+		gvk := integrationObject().GroupVersionKind()
 		list.SetGroupVersionKind(gvk.GroupVersion().WithKind(gvk.Kind + "List"))
 		return limited.List(ctx, list, client.InNamespace("operator-tests"))
 	})
@@ -148,7 +178,7 @@ func startIntegrationEnvironment(t *testing.T) *integrationEnvironment {
 }
 
 func (e *integrationEnvironment) application(name string) *unstructured.Unstructured {
-	application := object()
+	application := integrationObject()
 	application.SetName(name)
 	application.SetNamespace("operator-tests")
 	spec := map[string]any{"image": "nginx:1.27"}
@@ -213,7 +243,7 @@ func (e *integrationEnvironment) checkSchema(t *testing.T) {
 	if err := e.admin.Status().Update(ctx, application); err != nil {
 		t.Fatal(err)
 	}
-	actual := object()
+	actual := integrationObject()
 	if err := e.admin.Get(ctx, client.ObjectKeyFromObject(application), actual); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +268,7 @@ func (e *integrationEnvironment) checkRBAC(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if err := e.limited.Get(ctx, client.ObjectKeyFromObject(application), object()); err != nil {
+	if err := e.limited.Get(ctx, client.ObjectKeyFromObject(application), integrationObject()); err != nil {
 		t.Fatal(err)
 	}
 	mustBeForbidden(t, e.limited.Update(ctx, application))
@@ -256,7 +286,7 @@ func (e *integrationEnvironment) checkLifecycle(t *testing.T) {
 	if err := e.admin.Create(ctx, application); err != nil {
 		t.Fatal(err)
 	}
-	reconciler := &Reconciler{Client: e.limited, Scheme: e.scheme}
+	reconciler := operatorUnderTest.reconciler(e.limited, e.scheme)
 	reconcile := func() {
 		t.Helper()
 		if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(application)}); err != nil {
@@ -388,7 +418,7 @@ func (e *integrationEnvironment) assertDesired(t *testing.T, application *unstru
 	}
 	e.assertOwner(t, application, deployment)
 	labels := deployment.Spec.Selector.MatchLabels
-	if !reflect.DeepEqual(labels, deployment.Spec.Template.Labels) || labels["kubiad.dev/instance"] != application.GetName() {
+	if len(labels) == 0 || labels["kubiad.dev/instance"] == "" || !selectorMatches(labels, deployment.Spec.Template.Labels) {
 		t.Fatalf("Deployment selector/template labels differ: %#v", deployment.Spec)
 	}
 	if e.hasService {
@@ -424,7 +454,7 @@ func (e *integrationEnvironment) assertOwner(t *testing.T, application *unstruct
 
 func (e *integrationEnvironment) assertStatus(t *testing.T, application *unstructured.Unstructured, phase string, ready int64) {
 	t.Helper()
-	actual := object()
+	actual := integrationObject()
 	if err := e.admin.Get(t.Context(), client.ObjectKeyFromObject(application), actual); err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +470,7 @@ func (e *integrationEnvironment) assertStatus(t *testing.T, application *unstruc
 
 func (e *integrationEnvironment) resourceVersions(t *testing.T, application *unstructured.Unstructured) []string {
 	t.Helper()
-	actual := object()
+	actual := integrationObject()
 	if err := e.admin.Get(t.Context(), client.ObjectKeyFromObject(application), actual); err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +483,7 @@ func (e *integrationEnvironment) resourceVersions(t *testing.T, application *uns
 
 func (e *integrationEnvironment) updateSpec(t *testing.T, application *unstructured.Unstructured, replicas int64, image string, port int64) {
 	t.Helper()
-	current := object()
+	current := integrationObject()
 	if err := e.admin.Get(t.Context(), client.ObjectKeyFromObject(application), current); err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +513,7 @@ func (e *integrationEnvironment) checkManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reconciler := &Reconciler{Client: manager.GetClient(), Scheme: manager.GetScheme()}
+	reconciler := operatorUnderTest.reconciler(manager.GetClient(), manager.GetScheme())
 	if err := reconciler.SetupWithManager(manager); err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +594,7 @@ func (e *integrationEnvironment) checkManager(t *testing.T) {
 	}
 	e.markReady(t, application, 3)
 	eventually(t, "Deployment status watch updates primary status", func(ctx context.Context) error {
-		actual := object()
+		actual := integrationObject()
 		if err := e.admin.Get(ctx, client.ObjectKeyFromObject(application), actual); err != nil {
 			return err
 		}
@@ -600,5 +630,45 @@ func mustBeForbidden(t *testing.T, err error) {
 	t.Helper()
 	if !apierrors.IsForbidden(err) {
 		t.Fatalf("permission error = %v, want Forbidden", err)
+	}
+}
+
+func readIntegrationManifest(t *testing.T, name string, resource client.Object) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "config", "rbac", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.UnmarshalStrict(data, resource); err != nil {
+		t.Fatalf("decode %s: %v", name, err)
+	}
+}
+
+func selectorMatches(selector, podLabels map[string]string) bool {
+	return labels.SelectorFromSet(selector).Matches(labels.Set(podLabels))
+}
+
+func (e *integrationEnvironment) checkIsolation(t *testing.T) {
+	applications := []*unstructured.Unstructured{e.application("isolated-a"), e.application("isolated-b")}
+	reconciler := operatorUnderTest.reconciler(e.limited, e.scheme)
+	deployments := make([]*appsv1.Deployment, 0, len(applications))
+	for _, application := range applications {
+		if err := e.admin.Create(t.Context(), application); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reconciler.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(application)}); err != nil {
+			t.Fatal(err)
+		}
+		e.assertDesired(t, application, 1, "nginx:1.27", 8080)
+		deployments = append(deployments, e.deployment(t, application))
+	}
+	for index, deployment := range deployments {
+		other := deployments[1-index]
+		if selectorMatches(deployment.Spec.Selector.MatchLabels, other.Spec.Template.Labels) {
+			t.Fatalf("%s selects the other application's Pods", deployment.Name)
+		}
+		if e.hasService && selectorMatches(e.service(t, applications[index]).Spec.Selector, other.Spec.Template.Labels) {
+			t.Fatalf("%s Service selects the other application's Pods", deployment.Name)
+		}
 	}
 }

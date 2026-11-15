@@ -1,0 +1,23 @@
+package controller
+
+import (
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	operatorapi "BASELINE_MODULE/api/v1alpha1"
+)
+
+func integrationImplementation() integrationAdapter {
+	return integrationAdapter{
+		object: func() *unstructured.Unstructured {
+			resource := &unstructured.Unstructured{}
+			resource.SetGroupVersionKind(operatorapi.GroupVersion.WithKind("OPERATOR_KIND"))
+			return resource
+		},
+		register: operatorapi.AddToScheme,
+		reconciler: func(kube client.Client, scheme *runtime.Scheme) integrationController {
+			return &OPERATOR_KINDReconciler{Client: kube, Scheme: scheme}
+		},
+	}
+}

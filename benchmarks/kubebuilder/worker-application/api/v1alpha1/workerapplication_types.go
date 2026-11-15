@@ -17,7 +17,7 @@ type WorkerApplicationSpec struct {
 	// +kubebuilder:default:=1
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=10
-	Replicas int32 `json:"replicas,omitempty"`
+	Replicas int32 `json:"replicas"`
 }
 
 // WorkerApplicationStatus defines the observed state of WorkerApplication
@@ -40,7 +40,8 @@ type WorkerApplication struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   WorkerApplicationSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Required
+	Spec   WorkerApplicationSpec   `json:"spec"`
 	Status WorkerApplicationStatus `json:"status,omitempty"`
 }
 
