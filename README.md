@@ -78,6 +78,20 @@ env KIND_EXPERIMENTAL_PROVIDER=docker KUBIAD_KIND_TEST=1 go test -tags=kind ./in
 
 See [cluster test prerequisites, isolation, and references](docs/kind-tests.md).
 
+## CI and evaluation reports
+
+GitHub Actions runs ordinary checks, the six-implementation envtest contract,
+and three generated kind smoke tests as independent jobs. Each publishes
+JSON evidence, readable logs and a Markdown summary, including failed runs.
+The same reporter is available locally:
+
+```sh
+go run ./cmd/kubiad-evaluate --suite unit
+```
+
+See [report commands, artifacts, interpretation, and references](docs/evaluation.md).
+Static corpus classifications and runtime integration results remain separate.
+
 ## Generator
 
 The generator creates API, CRD, RBAC, a controller-runtime reconciler, manager entry point, container build recipe, and deploy manifests from validated IR. The legacy commands below keep the three manually constructed IR examples available as reference cases:

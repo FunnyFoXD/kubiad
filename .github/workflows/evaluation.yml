@@ -1,0 +1,71 @@
+name: Evaluation
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, envtest, kind]
+    env:
+      KUBIAD_ENVTEST_DOWNLOAD: '1'
+      KUBIAD_KIND_TEST: '1'
+      KIND_EXPERIMENTAL_PROVIDER: docker
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.1'
+          cache: true
+          cache-dependency-path: benchmarks/kubebuilder/*/go.sum
+      - name: Validate workflow
+        if: matrix.suite == 'unit'
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
+      - name: Install cluster tools
+        if: matrix.suite == 'kind'
+        run: |
+          go install sigs.k8s.io/kind@v0.31.0
+          curl --fail --silent --show-error --location --output kubectl https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl
+          curl --fail --silent --show-error --location --output kubectl.sha256 https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl.sha256
+          echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+          install -m 0755 kubectl "$(go env GOPATH)/bin/kubectl"
+          rm kubectl kubectl.sha256
+      - name: Run evaluation
+        run: go run ./cmd/kubiad-evaluate --suite '${{ matrix.suite }}' --output 'reports/${{ matrix.suite }}'
+      - name: Publish summary
+        if: always()
+        env:
+          REPORT_DIRECTORY: reports/${{ matrix.suite }}
+        run: |
+          if [ -f "$REPORT_DIRECTORY/summary.md" ]; then
+            cat "$REPORT_DIRECTORY/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Evaluation did not produce a report; inspect setup or cancellation logs' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: evaluation-${{ matrix.suite }}-${{ github.run_attempt }}
+          path: reports/${{ matrix.suite }}/
+          if-no-files-found: error
+          retention-days: 30
