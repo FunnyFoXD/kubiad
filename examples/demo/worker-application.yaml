@@ -1,0 +1,6 @@
+apiVersion: apps.kubiad.dev/v1alpha1
+kind: WorkerApplication
+metadata:
+  name: demo
+spec:
+  image: registry.k8s.io/pause:3.10
